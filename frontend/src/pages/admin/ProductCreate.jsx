@@ -1,0 +1,439 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { productAPI, catalogAPI, uploadAPI } from '../../services/api';
+import toast from 'react-hot-toast';
+import { Check, Plus, Trash2, Upload, Image } from 'lucide-react';
+import './Admin.css';
+
+const STEPS = ['Define Product', 'Listing Information', 'Product Information'];
+
+export default function ProductCreate() {
+  const navigate = useNavigate();
+  const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [attributes, setAttributes] = useState([]);
+
+  const [form, setForm] = useState({
+    name: '',
+    tagline: '',
+    developerName: '',
+    logo: '',
+    tags: [],
+    overview: [{ title: '', description: '', screenshots: [] }],
+    features: [{ title: '', description: '', screenshots: [] }],
+    attributes: [],
+    supportDescription: '',
+    policies: '',
+  });
+
+  const [tagInput, setTagInput] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingScreenshots, setUploadingScreenshots] = useState({});
+
+  useEffect(() => { loadAttributes(); }, []);
+
+  const loadAttributes = async () => {
+    try {
+      const res = await catalogAPI.getAll();
+      setAttributes(res.data.attributes || []);
+    } catch (err) {
+      console.error('Failed to load attributes');
+    }
+  };
+
+  const update = (field, val) => setForm(prev => ({ ...prev, [field]: val }));
+
+  // Tag management
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (t && !form.tags.includes(t)) {
+      update('tags', [...form.tags, t]);
+      setTagInput('');
+    }
+  };
+  const removeTag = (tag) => update('tags', form.tags.filter(t => t !== tag));
+
+  // Overview/Feature repeaters
+  const addRepeaterItem = (field) => {
+    update(field, [...form[field], { title: '', description: '', screenshots: [] }]);
+  };
+  const removeRepeaterItem = (field, idx) => {
+    update(field, form[field].filter((_, i) => i !== idx));
+  };
+  const updateRepeater = (field, idx, key, val) => {
+    const items = [...form[field]];
+    items[idx] = { ...items[idx], [key]: val };
+    update(field, items);
+  };
+
+  // Attribute management
+  const toggleAttribute = (attr) => {
+    const existing = form.attributes.find(a => a.attributeId === attr._id);
+    if (existing) {
+      update('attributes', form.attributes.filter(a => a.attributeId !== attr._id));
+    } else {
+      update('attributes', [...form.attributes, { attributeId: attr._id, attributeName: attr.name, values: [] }]);
+    }
+  };
+  const setAttributeValues = (attrId, values) => {
+    update('attributes', form.attributes.map(a =>
+      a.attributeId === attrId ? { ...a, values } : a
+    ));
+  };
+
+  // File uploads
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const res = await uploadAPI.single(file);
+      update('logo', res.data.url);
+      toast.success('Logo uploaded');
+    } catch {
+      toast.error('Logo upload failed');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleScreenshotUpload = async (field, idx, e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const key = `${field}-${idx}`;
+    setUploadingScreenshots(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await uploadAPI.multiple(files);
+      const urls = res.data.files.map(f => f.url);
+      const items = [...form[field]];
+      items[idx] = { ...items[idx], screenshots: [...items[idx].screenshots, ...urls] };
+      update(field, items);
+      toast.success('Screenshots uploaded');
+    } catch {
+      toast.error('Screenshot upload failed');
+    } finally {
+      setUploadingScreenshots(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const removeScreenshot = (field, itemIdx, ssIdx) => {
+    const items = [...form[field]];
+    items[itemIdx] = { ...items[itemIdx], screenshots: items[itemIdx].screenshots.filter((_, i) => i !== ssIdx) };
+    update(field, items);
+  };
+
+  // Validation
+  const validateStep = () => {
+    if (step === 0 && !form.name.trim()) {
+      toast.error('Product name is required');
+      return false;
+    }
+    return true;
+  };
+
+  // Save
+  const handleSave = async (status) => {
+    if (!form.name.trim()) return toast.error('Product name is required');
+
+    // Check required attributes
+    const requiredAttrs = attributes.filter(a => a.requiredInProductEditor);
+    for (const attr of requiredAttrs) {
+      const formAttr = form.attributes.find(a => a.attributeId === attr._id);
+      if (!formAttr || formAttr.values.length === 0) {
+        return toast.error(`"${attr.name}" is required`);
+      }
+    }
+
+    setSaving(true);
+    try {
+      await productAPI.create({ ...form, status });
+      toast.success(status === 'published' ? 'Product published!' : 'Draft saved!');
+      navigate('/admin/products');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to save product');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <div>
+          <h1>Create Product</h1>
+          <p>Add a new product to the marketplace</p>
+        </div>
+      </div>
+
+      {/* Stepper */}
+      <div className="stepper">
+        {STEPS.map((label, i) => (
+          <div key={i} className={`step ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}`}>
+            <div className="step-number">{i < step ? <Check size={14} /> : i + 1}</div>
+            <span className="step-label">{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Step 1: Define Product */}
+      {step === 0 && (
+        <div className="wizard-content card card-body">
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">Define Your Product</h3>
+            <div className="form-group">
+              <label className="form-label">Product Name <span className="required">*</span></label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Enter product name"
+                value={form.name}
+                onChange={(e) => update('name', e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Listing Information */}
+      {step === 1 && (
+        <div className="wizard-content card card-body">
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">Listing Information</h3>
+
+            <div className="grid-2">
+              <div className="form-group">
+                <label className="form-label">Tagline</label>
+                <input type="text" className="form-input" placeholder="Short description" value={form.tagline} onChange={(e) => update('tagline', e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Developer Name</label>
+                <input type="text" className="form-input" placeholder="Developer or company name" value={form.developerName} onChange={(e) => update('developerName', e.target.value)} />
+              </div>
+            </div>
+
+            {/* Logo */}
+            <div className="form-group">
+              <label className="form-label">Product Logo</label>
+              <div className="image-upload-area">
+                <input type="file" accept="image/*" onChange={handleLogoUpload} disabled={uploadingLogo} />
+                {uploadingLogo ? (
+                  <div style={{ padding: '20px', color: 'var(--text-muted)' }}>
+                    <div className="spinner mb-sm" style={{ margin: '0 auto 8px' }} />
+                    <p>Uploading...</p>
+                  </div>
+                ) : form.logo ? (
+                  <img src={form.logo} alt="Logo" className="image-preview" style={{ maxHeight: 120, objectFit: 'contain' }} />
+                ) : (
+                  <div style={{ padding: '20px', color: 'var(--text-muted)' }}>
+                    <Upload size={24} style={{ marginBottom: 8 }} />
+                    <p>Click or drag to upload logo</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Tags */}
+            <div className="form-group">
+              <label className="form-label">Tags</label>
+              <div className="option-input-row">
+                <input type="text" className="form-input" placeholder="Add a tag" value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())} />
+                <button type="button" className="btn btn-secondary" onClick={addTag}>Add</button>
+              </div>
+              <div className="flex gap-sm flex-wrap mt-sm">
+                {form.tags.map(tag => (
+                  <span key={tag} className="tag">
+                    {tag}
+                    <span className="tag-remove" onClick={() => removeTag(tag)}>&times;</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Overview */}
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">Overview</h3>
+            {form.overview.map((item, idx) => (
+              <div key={idx} className="repeater-item">
+                {form.overview.length > 1 && (
+                  <button className="btn btn-icon btn-ghost repeater-remove" onClick={() => removeRepeaterItem('overview', idx)}>
+                    <Trash2 size={14} />
+                  </button>
+                )}
+                <div className="form-group">
+                  <label className="form-label">Title</label>
+                  <input type="text" className="form-input" value={item.title} onChange={(e) => updateRepeater('overview', idx, 'title', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Description</label>
+                  <textarea className="form-textarea" value={item.description} onChange={(e) => updateRepeater('overview', idx, 'description', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Screenshots</label>
+                  <div className="screenshots-grid">
+                    {item.screenshots.map((ss, ssIdx) => (
+                      <div key={ssIdx} style={{ position: 'relative' }}>
+                        <img src={ss} alt="" className="screenshot-thumb" />
+                        <button className="sliding-image-remove" onClick={() => removeScreenshot('overview', idx, ssIdx)}>&times;</button>
+                      </div>
+                    ))}
+                    {uploadingScreenshots[`overview-${idx}`] ? (
+                      <div className="screenshot-upload-btn" style={{ cursor: 'default' }}>
+                        <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+                      </div>
+                    ) : (
+                      <label className="screenshot-upload-btn">
+                        <Image size={16} />
+                        <input type="file" accept="image/*" multiple onChange={(e) => handleScreenshotUpload('overview', idx, e)} style={{ display: 'none' }} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button type="button" className="repeater-add" onClick={() => addRepeaterItem('overview')}>
+              <Plus size={16} /> Add Overview Section
+            </button>
+          </div>
+
+          {/* Features */}
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">Features</h3>
+            {form.features.map((item, idx) => (
+              <div key={idx} className="repeater-item">
+                {form.features.length > 1 && (
+                  <button className="btn btn-icon btn-ghost repeater-remove" onClick={() => removeRepeaterItem('features', idx)}>
+                    <Trash2 size={14} />
+                  </button>
+                )}
+                <div className="form-group">
+                  <label className="form-label">Title</label>
+                  <input type="text" className="form-input" value={item.title} onChange={(e) => updateRepeater('features', idx, 'title', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Description</label>
+                  <textarea className="form-textarea" value={item.description} onChange={(e) => updateRepeater('features', idx, 'description', e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Screenshots</label>
+                  <div className="screenshots-grid">
+                    {item.screenshots.map((ss, ssIdx) => (
+                      <div key={ssIdx} style={{ position: 'relative' }}>
+                        <img src={ss} alt="" className="screenshot-thumb" />
+                        <button className="sliding-image-remove" onClick={() => removeScreenshot('features', idx, ssIdx)}>&times;</button>
+                      </div>
+                    ))}
+                    {uploadingScreenshots[`features-${idx}`] ? (
+                      <div className="screenshot-upload-btn" style={{ cursor: 'default' }}>
+                        <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+                      </div>
+                    ) : (
+                      <label className="screenshot-upload-btn">
+                        <Image size={16} />
+                        <input type="file" accept="image/*" multiple onChange={(e) => handleScreenshotUpload('features', idx, e)} style={{ display: 'none' }} />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <button type="button" className="repeater-add" onClick={() => addRepeaterItem('features')}>
+              <Plus size={16} /> Add Feature
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Product Information */}
+      {step === 2 && (
+        <div className="wizard-content card card-body">
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">Attributes</h3>
+            {attributes.length === 0 ? (
+              <p className="text-muted" style={{ fontSize: '14px' }}>No attributes configured. Go to Catalog Management to add attributes.</p>
+            ) : (
+              attributes.map(attr => {
+                const formAttr = form.attributes.find(a => a.attributeId === attr._id);
+                const isSelected = !!formAttr;
+                return (
+                  <div key={attr._id} className="repeater-item">
+                    <div className="flex items-center justify-between mb-md">
+                      <div>
+                        <span style={{ fontWeight: 600 }}>{attr.name}</span>
+                        {attr.requiredInProductEditor && <span className="required" style={{ marginLeft: 4 }}>*</span>}
+                        {attr.description && <p className="text-muted" style={{ fontSize: '12px', marginTop: 2 }}>{attr.description}</p>}
+                      </div>
+                      <label className="toggle">
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleAttribute(attr)} />
+                        <span className="toggle-slider" />
+                      </label>
+                    </div>
+                    {isSelected && attr.options.length > 0 && (
+                      <div className="flex gap-sm flex-wrap">
+                        {attr.options.map(opt => (
+                          <button
+                            key={opt}
+                            type="button"
+                            className={`product-select-chip ${formAttr.values.includes(opt) ? 'selected' : ''}`}
+                            onClick={() => {
+                              const vals = formAttr.values.includes(opt)
+                                ? formAttr.values.filter(v => v !== opt)
+                                : [...formAttr.values, opt];
+                              setAttributeValues(attr._id, vals);
+                            }}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">Support & Policies</h3>
+            <div className="form-group">
+              <label className="form-label">Support Description</label>
+              <textarea className="form-textarea" placeholder="Describe the support offered for this product" value={form.supportDescription} onChange={(e) => update('supportDescription', e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Policies</label>
+              <textarea className="form-textarea" placeholder="Product policies, terms of use, etc." value={form.policies} onChange={(e) => update('policies', e.target.value)} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="wizard-footer">
+        <button
+          className="btn btn-secondary"
+          disabled={step === 0}
+          onClick={() => setStep(s => s - 1)}
+        >
+          Previous
+        </button>
+        <div className="flex gap-sm">
+          {step === STEPS.length - 1 ? (
+            <>
+              <button className="btn btn-secondary" onClick={() => handleSave('draft')} disabled={saving}>
+                Save as Draft
+              </button>
+              <button className="btn btn-primary" onClick={() => handleSave('published')} disabled={saving}>
+                {saving ? 'Publishing...' : 'Publish'}
+              </button>
+            </>
+          ) : (
+            <button className="btn btn-primary" onClick={() => validateStep() && setStep(s => s + 1)}>
+              Next
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
