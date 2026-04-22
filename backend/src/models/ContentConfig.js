@@ -14,6 +14,7 @@ const contactValidationSchema = new mongoose.Schema({
   step: { type: Number },
   minDate: { type: String },
   maxDate: { type: String },
+  customError: { type: String },
 }, { _id: false });
 
 const contactFieldSchema = new mongoose.Schema({

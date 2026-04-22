@@ -76,7 +76,7 @@ const DEFAULT_CONTACT_FIELDS = [
   },
 ];
 
-const SUPPORTED_TYPES = new Set(['text', 'textarea', 'email', 'number', 'select', 'radio', 'checkbox', 'date', 'file', 'tel']);
+const SUPPORTED_TYPES = new Set(['text', 'textarea', 'email', 'url', 'number', 'select', 'radio', 'checkbox', 'date', 'file', 'tel']);
 
 const toNumberOrUndefined = (val) => {
   if (val === '' || val === null || val === undefined) return undefined;
@@ -137,6 +137,7 @@ const normalizeFieldConfig = (field, index) => {
       step: toNumberOrUndefined(validations.step),
       minDate: validations.minDate ? String(validations.minDate).trim() : undefined,
       maxDate: validations.maxDate ? String(validations.maxDate).trim() : undefined,
+      customError: validations.customError ? String(validations.customError).trim() : undefined,
     },
     isDefault: !!field?.isDefault,
     order: Number.isFinite(Number(field?.order)) ? Number(field.order) : index,
@@ -204,7 +205,7 @@ const validateSubmissionValue = (field, rawValue) => {
   const optionValues = new Set((field.options || []).map((o) => o.value));
 
   if (field.required && isBlank(rawValue)) {
-    return { error: `${fieldLabel} is required.` };
+    return { error: v.customError || `${fieldLabel} is required.` };
   }
 
   if (!field.required && isBlank(rawValue)) {
@@ -216,7 +217,7 @@ const validateSubmissionValue = (field, rawValue) => {
       const values = Array.isArray(rawValue) ? rawValue : [rawValue];
       const cleanValues = values.map((x) => String(x));
       const invalid = cleanValues.find((x) => !optionValues.has(x));
-      if (invalid) return { error: `${fieldLabel} has invalid option selected.` };
+      if (invalid) return { error: v.customError || `${fieldLabel} has invalid option selected.` };
       return { value: cleanValues };
     }
     return { value: !!rawValue };
@@ -224,13 +225,13 @@ const validateSubmissionValue = (field, rawValue) => {
 
   if (field.type === 'number') {
     const num = Number(rawValue);
-    if (!Number.isFinite(num)) return { error: `${fieldLabel} must be a number.` };
-    if (v.min !== undefined && num < v.min) return { error: `${fieldLabel} must be >= ${v.min}.` };
-    if (v.max !== undefined && num > v.max) return { error: `${fieldLabel} must be <= ${v.max}.` };
+    if (!Number.isFinite(num)) return { error: v.customError || `${fieldLabel} must be a number.` };
+    if (v.min !== undefined && num < v.min) return { error: v.customError || `${fieldLabel} must be >= ${v.min}.` };
+    if (v.max !== undefined && num > v.max) return { error: v.customError || `${fieldLabel} must be <= ${v.max}.` };
     if (v.step !== undefined && v.step > 0 && v.min !== undefined) {
       const ratio = (num - v.min) / v.step;
       if (Math.abs(ratio - Math.round(ratio)) > 1e-8) {
-        return { error: `${fieldLabel} must follow step ${v.step}.` };
+        return { error: v.customError || `${fieldLabel} must follow step ${v.step}.` };
       }
     }
     return { value: num };
@@ -238,15 +239,15 @@ const validateSubmissionValue = (field, rawValue) => {
 
   if (field.type === 'select' || field.type === 'radio') {
     const selected = String(rawValue);
-    if (!optionValues.has(selected)) return { error: `${fieldLabel} has an invalid selection.` };
+    if (!optionValues.has(selected)) return { error: v.customError || `${fieldLabel} has an invalid selection.` };
     return { value: selected };
   }
 
   if (field.type === 'date') {
     const dateValue = new Date(String(rawValue));
-    if (Number.isNaN(dateValue.getTime())) return { error: `${fieldLabel} must be a valid date.` };
-    if (v.minDate && dateValue < new Date(v.minDate)) return { error: `${fieldLabel} must be on/after ${v.minDate}.` };
-    if (v.maxDate && dateValue > new Date(v.maxDate)) return { error: `${fieldLabel} must be on/before ${v.maxDate}.` };
+    if (Number.isNaN(dateValue.getTime())) return { error: v.customError || `${fieldLabel} must be a valid date.` };
+    if (v.minDate && dateValue < new Date(v.minDate)) return { error: v.customError || `${fieldLabel} must be on/after ${v.minDate}.` };
+    if (v.maxDate && dateValue > new Date(v.maxDate)) return { error: v.customError || `${fieldLabel} must be on/before ${v.maxDate}.` };
     return { value: String(rawValue) };
   }
 
@@ -261,19 +262,28 @@ const validateSubmissionValue = (field, rawValue) => {
 
   if (field.type === 'email') {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(textVal)) return { error: `${fieldLabel} must be a valid email address.` };
+    if (!emailRegex.test(textVal)) return { error: v.customError || `${fieldLabel} must be a valid email address.` };
+  }
+
+  if (field.type === 'url') {
+    try {
+      // eslint-disable-next-line no-new
+      new URL(textVal);
+    } catch {
+      return { error: v.customError || `${fieldLabel} must be a valid URL.` };
+    }
   }
 
   if (v.minLength !== undefined && textVal.length < v.minLength) {
-    return { error: `${fieldLabel} must be at least ${v.minLength} characters.` };
+    return { error: v.customError || `${fieldLabel} must be at least ${v.minLength} characters.` };
   }
   if (v.maxLength !== undefined && textVal.length > v.maxLength) {
-    return { error: `${fieldLabel} must be at most ${v.maxLength} characters.` };
+    return { error: v.customError || `${fieldLabel} must be at most ${v.maxLength} characters.` };
   }
   if (v.regex) {
     try {
       const re = new RegExp(v.regex);
-      if (!re.test(textVal)) return { error: `${fieldLabel} format is invalid.` };
+      if (!re.test(textVal)) return { error: v.customError || `${fieldLabel} format is invalid.` };
     } catch {
       return { error: `${fieldLabel} has invalid validation config.` };
     }

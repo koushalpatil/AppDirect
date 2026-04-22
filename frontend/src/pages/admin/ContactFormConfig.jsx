@@ -1,13 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import { configAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { Plus, Edit3, Trash2, GripVertical, X, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Edit3, Trash2, GripVertical, X, Eye } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import './Admin.css';
 
 const FIELD_TYPES = [
   { value: 'text', label: 'Text' },
   { value: 'textarea', label: 'Textarea' },
   { value: 'email', label: 'Email' },
+  { value: 'url', label: 'URL' },
+  { value: 'tel', label: 'Phone (Tel)' },
   { value: 'number', label: 'Number' },
   { value: 'select', label: 'Dropdown (Select)' },
   { value: 'radio', label: 'Radio Buttons' },
@@ -34,6 +52,7 @@ const buildEmptyField = (order) => ({
     step: '',
     minDate: '',
     maxDate: '',
+    customError: '',
   },
   isDefault: false,
   order,
@@ -48,15 +67,65 @@ const normalizeKey = (value) => String(value || '')
   .replace(/_+/g, '_')
   .toLowerCase();
 
+function SortableField({ field, index, moveField, openEditField, removeField }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: field.fieldName || `field-${index}` });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : 'auto',
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="config-field-item">
+      <div {...attributes} {...listeners} className="drag-handle">
+        <GripVertical size={16} className="text-muted" />
+      </div>
+      <div className="config-field-info">
+        <div className="config-field-name">
+          {field.label}
+          {field.required && <span className="required" style={{ marginLeft: 4 }}>*</span>}
+          {field.isDefault && <span className="badge badge-primary" style={{ marginLeft: 8 }}>Default</span>}
+        </div>
+        <div className="config-field-type">Type: {FIELD_TYPES.find(t => t.value === field.type)?.label || field.type} | Key: {field.fieldName}</div>
+      </div>
+      <div className="config-field-actions">
+        <button className="btn btn-icon btn-ghost" onClick={() => openEditField(field, index)}><Edit3 size={14} /></button>
+        <button className="btn btn-icon btn-ghost" onClick={() => removeField(index)}><Trash2 size={14} /></button>
+      </div>
+    </div>
+  );
+}
+
 export default function ContactFormConfig() {
   const [fields, setFields] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [editIndex, setEditIndex] = useState(null);
   const [optionInput, setOptionInput] = useState({ label: '', value: '' });
   const [modalErrors, setModalErrors] = useState({});
   const [fieldForm, setFieldForm] = useState(buildEmptyField(0));
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const loadConfig = useCallback(async () => {
     try {
@@ -130,6 +199,18 @@ export default function ContactFormConfig() {
     const next = [...fields];
     [next[idx], next[target]] = [next[target], next[idx]];
     setFields(next.map((f, i) => ({ ...f, order: i })));
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (active.id !== over.id) {
+      setFields((items) => {
+        const oldIndex = items.findIndex((i) => (i.fieldName || `field-${items.indexOf(i)}`) === active.id);
+        const newIndex = items.findIndex((i) => (i.fieldName || `field-${items.indexOf(i)}`) === over.id);
+        const next = arrayMove(items, oldIndex, newIndex);
+        return next.map((f, i) => ({ ...f, order: i }));
+      });
+    }
   };
 
   const validateFieldForm = () => {
@@ -210,6 +291,11 @@ export default function ContactFormConfig() {
     setModalOpen(false);
   };
 
+  const syncFieldName = (label) => {
+    if (editIndex !== null) return;
+    setFieldForm(p => ({ ...p, fieldName: normalizeKey(label) }));
+  };
+
   const removeField = (idx) => {
     if (fields[idx].isDefault && !window.confirm('This is a default field. Remove it?')) return;
     setFields(fields.filter((_, i) => i !== idx).map((f, i) => ({ ...f, order: i })));
@@ -245,6 +331,9 @@ export default function ContactFormConfig() {
           <p>Manage the fields displayed in the contact form</p>
         </div>
         <div className="page-actions">
+          <button className="btn btn-secondary" onClick={() => setPreviewOpen(true)}>
+            <Eye size={16} /> Preview
+          </button>
           <button className="btn btn-secondary" onClick={openAddField}>
             <Plus size={16} /> Add Field
           </button>
@@ -254,27 +343,29 @@ export default function ContactFormConfig() {
         </div>
       </div>
 
-      <div className="config-field-list">
-        {fields.map((field, idx) => (
-          <div key={idx} className="config-field-item">
-            <GripVertical size={16} className="text-muted" style={{ cursor: 'grab' }} />
-            <div className="config-field-info">
-              <div className="config-field-name">
-                {field.label}
-                {field.required && <span className="required" style={{ marginLeft: 4 }}>*</span>}
-                {field.isDefault && <span className="badge badge-primary" style={{ marginLeft: 8 }}>Default</span>}
-              </div>
-              <div className="config-field-type">Type: {field.type} | Field: {field.fieldName}</div>
-            </div>
-            <div className="config-field-actions">
-              <button className="btn btn-icon btn-ghost" onClick={() => moveField(idx, -1)} disabled={idx === 0} title="Move up"><ArrowUp size={14} /></button>
-              <button className="btn btn-icon btn-ghost" onClick={() => moveField(idx, 1)} disabled={idx === fields.length - 1} title="Move down"><ArrowDown size={14} /></button>
-              <button className="btn btn-icon btn-ghost" onClick={() => openEditField(field, idx)}><Edit3 size={14} /></button>
-              <button className="btn btn-icon btn-ghost" onClick={() => removeField(idx)}><Trash2 size={14} /></button>
-            </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext
+          items={fields.map(f => f.fieldName || `field-${fields.indexOf(f)}`)}
+          strategy={verticalListSortingStrategy}
+        >
+          <div className="config-field-list">
+            {fields.map((field, idx) => (
+              <SortableField
+                key={field.fieldName || `field-${idx}`}
+                field={field}
+                index={idx}
+                moveField={moveField}
+                openEditField={openEditField}
+                removeField={removeField}
+              />
+            ))}
           </div>
-        ))}
-      </div>
+        </SortableContext>
+      </DndContext>
 
       {/* Modal */}
       {modalOpen && (
@@ -288,7 +379,16 @@ export default function ContactFormConfig() {
               <div className="grid-2">
                 <div className="form-group">
                   <label className="form-label">Label <span className="required">*</span></label>
-                  <input type="text" className="form-input" value={fieldForm.label} onChange={(e) => setFieldForm(p => ({ ...p, label: e.target.value }))} />
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={fieldForm.label}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFieldForm(p => ({ ...p, label: val }));
+                      syncFieldName(val);
+                    }}
+                  />
                   {modalErrors.label && <small className="text-danger">{modalErrors.label}</small>}
                 </div>
                 <div className="form-group">
@@ -324,49 +424,29 @@ export default function ContactFormConfig() {
                   />
                   {modalErrors.fieldName && <small className="text-danger">{modalErrors.fieldName}</small>}
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Default Value</label>
-                  {['select', 'radio'].includes(fieldForm.type) ? (
-                    <select
-                      className="form-select"
-                      value={fieldForm.defaultValue || ''}
-                      onChange={(e) => setFieldForm((p) => ({ ...p, defaultValue: e.target.value }))}
-                    >
-                      <option value="">None</option>
-                      {(fieldForm.options || []).map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                  ) : fieldForm.type === 'checkbox' ? (
-                    <div className="attribute-options">
-                      {(fieldForm.options || []).map((opt) => {
-                        const checked = Array.isArray(fieldForm.defaultValue) && fieldForm.defaultValue.includes(opt.value);
-                        return (
-                          <label key={opt.value} className="product-select-chip" style={{ cursor: 'pointer' }}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => setFieldForm((p) => {
-                                const current = Array.isArray(p.defaultValue) ? p.defaultValue : [];
-                                const next = current.includes(opt.value)
-                                  ? current.filter((v) => v !== opt.value)
-                                  : [...current, opt.value];
-                                return { ...p, defaultValue: next };
-                              })}
-                            />
-                            <span style={{ marginLeft: 6 }}>{opt.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : fieldForm.type === 'date' ? (
-                    <input type="date" className="form-input" value={fieldForm.defaultValue || ''} onChange={(e) => setFieldForm((p) => ({ ...p, defaultValue: e.target.value }))} />
-                  ) : fieldForm.type === 'file' ? (
-                    <input type="text" className="form-input" value="" disabled placeholder="Default not supported for file field" />
-                  ) : (
-                    <input type="text" className="form-input" value={fieldForm.defaultValue || ''} onChange={(e) => setFieldForm((p) => ({ ...p, defaultValue: e.target.value }))} />
-                  )}
-                </div>
+                {!['radio', 'checkbox'].includes(fieldForm.type) && (
+                  <div className="form-group">
+                    <label className="form-label">Default Value</label>
+                    {fieldForm.type === 'select' ? (
+                      <select
+                        className="form-select"
+                        value={fieldForm.defaultValue || ''}
+                        onChange={(e) => setFieldForm((p) => ({ ...p, defaultValue: e.target.value }))}
+                      >
+                        <option value="">None</option>
+                        {(fieldForm.options || []).map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                    ) : fieldForm.type === 'date' ? (
+                      <input type="date" className="form-input" value={fieldForm.defaultValue || ''} onChange={(e) => setFieldForm((p) => ({ ...p, defaultValue: e.target.value }))} />
+                    ) : fieldForm.type === 'file' ? (
+                      <input type="text" className="form-input" value="" disabled placeholder="Default not supported for file field" />
+                    ) : (
+                      <input type="text" className="form-input" value={fieldForm.defaultValue || ''} onChange={(e) => setFieldForm((p) => ({ ...p, defaultValue: e.target.value }))} />
+                    )}
+                  </div>
+                )}
               </div>
               {!['radio', 'checkbox'].includes(fieldForm.type) && (
                 <div className="form-group">
@@ -454,6 +534,17 @@ export default function ContactFormConfig() {
                   </div>
                 </div>
               )}
+
+              <div className="form-group mt-md">
+                <label className="form-label">Custom Error Message (optional)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Leave empty for default message"
+                  value={fieldForm.validations.customError || ''}
+                  onChange={(e) => setFieldForm((p) => ({ ...p, validations: { ...p.validations, customError: e.target.value } }))}
+                />
+              </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancel</button>
@@ -462,6 +553,130 @@ export default function ContactFormConfig() {
           </div>
         </div>
       )}
+
+      {/* Preview Modal */}
+      {previewOpen && (
+        <div className="modal-overlay" onClick={() => setPreviewOpen(false)}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">Form Preview</h3>
+              <button className="btn btn-icon btn-ghost" onClick={() => setPreviewOpen(false)}><X size={18} /></button>
+            </div>
+            <div className="modal-body preview-body">
+              <div className="preview-container">
+                <div className="preview-form-grid">
+                  {fields.map((field) => (
+                    <div
+                      key={field.fieldName}
+                      className="preview-field-wrapper"
+                      style={{
+                        gridColumn: ['textarea', 'checkbox', 'radio'].includes(field.type) ? '1 / -1' : 'auto',
+                      }}
+                    >
+                      <label className="form-label">
+                        {field.label}
+                        {field.required && <span className="required">*</span>}
+                      </label>
+                      
+                      {field.type === 'textarea' && (
+                        <textarea className="form-input" rows={4} placeholder={field.placeholder} disabled />
+                      )}
+                      
+                      {['text', 'email', 'number', 'date', 'tel', 'url'].includes(field.type) && (
+                        <input type={['tel', 'url'].includes(field.type) ? 'text' : field.type} className="form-input" placeholder={field.placeholder} disabled />
+                      )}
+                      
+                      {field.type === 'select' && (
+                        <select className="form-select" disabled>
+                          <option value="">{field.placeholder || 'Select option'}</option>
+                          {field.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      )}
+                      
+                      {field.type === 'radio' && (
+                        <div className="flex gap-md mt-xs">
+                          {field.options.map(o => (
+                            <label key={o.value} className="flex gap-xs items-center cursor-not-allowed">
+                              <input type="radio" disabled /> <span>{o.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {field.type === 'checkbox' && (
+                        <div className="flex gap-md mt-xs">
+                          {field.options.map(o => (
+                            <label key={o.value} className="flex gap-xs items-center cursor-not-allowed">
+                              <input type="checkbox" disabled /> <span>{o.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {field.type === 'file' && (
+                        <div className="file-preview-placeholder">File Upload Field</div>
+                      )}
+                      
+                      {field.helpText && <small className="text-muted block mt-xs">{field.helpText}</small>}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-xl">
+                  <button className="btn btn-primary" disabled>Submit Form</button>
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setPreviewOpen(false)}>Close Preview</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .drag-handle {
+          cursor: grab;
+          padding: 8px;
+          margin-left: -8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .drag-handle:active {
+          cursor: grabbing;
+        }
+        .preview-body {
+          background: #f8fafc;
+          padding: 40px !important;
+        }
+        .preview-container {
+          background: white;
+          padding: 32px;
+          border-radius: 12px;
+          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+          max-width: 800px;
+          margin: 0 auto;
+        }
+        .preview-form-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 24px;
+        }
+        .preview-field-wrapper {
+          text-align: left;
+        }
+        .file-preview-placeholder {
+          padding: 20px;
+          border: 2px dashed #e2e8f0;
+          border-radius: 8px;
+          text-align: center;
+          color: #94a3b8;
+          font-size: 14px;
+        }
+        .modal-lg {
+          max-width: 900px !important;
+        }
+      `}</style>
     </div>
   );
 }

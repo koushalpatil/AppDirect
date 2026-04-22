@@ -19,8 +19,7 @@ const getInitialValue = (field) => {
 };
 
 const isPublicExcludedField = (field) => {
-  const normalizedKey = String(field?.fieldName || '').replace(/_/g, '').toLowerCase();
-  return field?.type === 'file' || normalizedKey === 'companysize';
+  return field?.type === 'file';
 };
 
 export default function ProductContact() {
@@ -70,7 +69,7 @@ export default function ProductContact() {
     const validations = field.validations || {};
 
     if (field.required && isEmpty(rawValue)) {
-      return `${fieldLabel} is required`;
+      return validations.customError || `${fieldLabel} is required`;
     }
     if (!field.required && isEmpty(rawValue)) {
       return '';
@@ -80,47 +79,52 @@ export default function ProductContact() {
       const selected = Array.isArray(rawValue) ? rawValue : [rawValue];
       const allowed = new Set((field.options || []).map((o) => o.value));
       const invalid = selected.find((value) => !allowed.has(value));
-      if (invalid) return `${fieldLabel} has invalid option selected`;
+      if (invalid) return validations.customError || `${fieldLabel} has invalid option selected`;
       return '';
     }
 
     if (field.type === 'number') {
       const num = Number(rawValue);
-      if (!Number.isFinite(num)) return `${fieldLabel} must be a number`;
-      if (validations.min !== undefined && num < validations.min) return `${fieldLabel} must be >= ${validations.min}`;
-      if (validations.max !== undefined && num > validations.max) return `${fieldLabel} must be <= ${validations.max}`;
+      if (!Number.isFinite(num)) return validations.customError || `${fieldLabel} must be a number`;
+      if (validations.min !== undefined && num < validations.min) return validations.customError || `${fieldLabel} must be >= ${validations.min}`;
+      if (validations.max !== undefined && num > validations.max) return validations.customError || `${fieldLabel} must be <= ${validations.max}`;
       return '';
     }
 
     if (field.type === 'select' || field.type === 'radio') {
       const allowed = new Set((field.options || []).map((o) => o.value));
-      if (!allowed.has(String(rawValue))) return `${fieldLabel} has invalid selection`;
+      if (!allowed.has(String(rawValue))) return validations.customError || `${fieldLabel} has invalid selection`;
       return '';
     }
 
     if (field.type === 'date') {
       const dateVal = new Date(String(rawValue));
-      if (Number.isNaN(dateVal.getTime())) return `${fieldLabel} must be a valid date`;
-      if (validations.minDate && dateVal < new Date(validations.minDate)) return `${fieldLabel} should be on/after ${validations.minDate}`;
-      if (validations.maxDate && dateVal > new Date(validations.maxDate)) return `${fieldLabel} should be on/before ${validations.maxDate}`;
+      if (Number.isNaN(dateVal.getTime())) return validations.customError || `${fieldLabel} must be a valid date`;
+      if (validations.minDate && dateVal < new Date(validations.minDate)) return validations.customError || `${fieldLabel} should be on/after ${validations.minDate}`;
+      if (validations.maxDate && dateVal > new Date(validations.maxDate)) return validations.customError || `${fieldLabel} should be on/before ${validations.maxDate}`;
       return '';
     }
 
     const value = String(rawValue).trim();
-    if (field.type === 'email') {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(value)) return `${fieldLabel} must be a valid email`;
+    if (field.type === 'url') {
+      try {
+        // eslint-disable-next-line no-new
+        new URL(value);
+      } catch {
+        return validations.customError || `${fieldLabel} must be a valid URL`;
+      }
     }
+
     if (validations.minLength !== undefined && value.length < validations.minLength) {
-      return `${fieldLabel} must be at least ${validations.minLength} characters`;
+      return validations.customError || `${fieldLabel} must be at least ${validations.minLength} characters`;
     }
     if (validations.maxLength !== undefined && value.length > validations.maxLength) {
-      return `${fieldLabel} must be at most ${validations.maxLength} characters`;
+      return validations.customError || `${fieldLabel} must be at most ${validations.maxLength} characters`;
     }
     if (validations.regex) {
       try {
         const re = new RegExp(validations.regex);
-        if (!re.test(value)) return `${fieldLabel} format is invalid`;
+        if (!re.test(value)) return validations.customError || `${fieldLabel} format is invalid`;
       } catch {
         return `${fieldLabel} has invalid validation pattern`;
       }
@@ -223,18 +227,16 @@ export default function ProductContact() {
           />
         )}
 
-        {(field.type === 'text' || field.type === 'email' || field.type === 'number' || field.type === 'date' || field.type === 'tel') && (
+        {(['text', 'email', 'number', 'date', 'tel', 'url'].includes(field.type)) && (
           <input
             {...commonProps}
             type={field.type === 'text' ? 'text' : field.type}
-            min={field.type === 'number' ? validations.min : undefined}
-            max={field.type === 'number' ? validations.max : undefined}
+            min={field.type === 'number' ? validations.min : (field.type === 'date' ? validations.minDate : undefined)}
+            max={field.type === 'number' ? validations.max : (field.type === 'date' ? validations.maxDate : undefined)}
             step={field.type === 'number' ? validations.step : undefined}
-            minLength={field.type === 'text' || field.type === 'tel' ? validations.minLength : undefined}
-            maxLength={field.type === 'text' || field.type === 'tel' ? validations.maxLength : undefined}
+            minLength={['text', 'tel', 'url', 'email', 'textarea'].includes(field.type) ? validations.minLength : undefined}
+            maxLength={['text', 'tel', 'url', 'email', 'textarea'].includes(field.type) ? validations.maxLength : undefined}
             pattern={validations.regex || undefined}
-            min={field.type === 'date' ? validations.minDate : undefined}
-            max={field.type === 'date' ? validations.maxDate : undefined}
           />
         )}
 
@@ -284,6 +286,7 @@ export default function ProductContact() {
             ))}
           </div>
         )}
+        {field.helpText && <small style={{ display: 'block', color: '#64748b', marginTop: 4 }}>{field.helpText}</small>}
 
         {fieldError && <small style={{ color: '#dc2626', display: 'block', marginTop: 4 }}>{fieldError}</small>}
       </div>
