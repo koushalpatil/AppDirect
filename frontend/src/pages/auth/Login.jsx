@@ -8,7 +8,6 @@ import './Auth.css';
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('user');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -19,7 +18,7 @@ export default function Login() {
     if (!email || !password) return toast.error('Please fill all fields');
     setLoading(true);
     try {
-      const user = await login(email, password, role);
+      const user = await login(email, password);
       toast.success(`Welcome back, ${user.firstName}!`);
       navigate(user.role === 'admin' ? '/admin' : '/');
     } catch (err) {
@@ -68,26 +67,6 @@ export default function Login() {
               />
               <button type="button" className="input-icon-btn" onClick={() => setShowPw(!showPw)}>
                 {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Log in as</label>
-            <div className="role-toggle">
-              <button
-                type="button"
-                className={`role-option ${role === 'user' ? 'active' : ''}`}
-                onClick={() => setRole('user')}
-              >
-                User
-              </button>
-              <button
-                type="button"
-                className={`role-option ${role === 'admin' ? 'active' : ''}`}
-                onClick={() => setRole('admin')}
-              >
-                Admin
               </button>
             </div>
           </div>

@@ -112,6 +112,10 @@ exports.deleteAttribute = async (req, res) => {
       return res.status(404).json({ message: 'Attribute not found.' });
     }
 
+    if (attribute.name.toLowerCase() === 'category') {
+      return res.status(403).json({ message: 'The standard Category attribute cannot be deleted.' });
+    }
+
     // Check if any products use this attribute
     const linkedProducts = await Product.countDocuments({ 'attributes.attributeId': req.params.id });
     if (linkedProducts > 0) {

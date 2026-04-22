@@ -37,6 +37,10 @@ const productSchema = new mongoose.Schema({
   }],
   supportDescription: { type: String },
   policies: { type: String },
+  resources: [{
+    name: { type: String, required: true },
+    url: { type: String, required: true },
+  }],
 
   // Metadata
   status: {

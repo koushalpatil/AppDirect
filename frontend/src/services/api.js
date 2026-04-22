@@ -50,6 +50,8 @@ export const productAPI = {
   getPublished: (params) => api.get('/products/public', { params }),
   getPublicOne: (id) => api.get(`/products/public/${id}`),
   getByAttribute: (params) => api.get('/products/public/by-attribute', { params }),
+  search: (params) => api.get('/products/public/search', { params }),
+  getFacets: (params) => api.get('/products/public/facets', { params }),
 };
 
 // Catalog (Admin)

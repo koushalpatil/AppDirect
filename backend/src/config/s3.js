@@ -4,6 +4,46 @@ const multerS3 = require('multer-s3');
 const path = require('path');
 const fs = require('fs');
 
+// ── Allowed file types ───────────────────────────────────────────────────────
+
+// Image MIME types allowed for logos and screenshots
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'image/gif'];
+const IMAGE_EXT = /\.(jpg|jpeg|png|webp|svg|gif)$/i;
+
+// Document MIME types allowed for resources
+const DOC_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+  'text/csv',
+];
+const DOC_EXT = /\.(pdf|doc|docx|csv|xls|xlsx|txt)$/i;
+
+/**
+ * Multer fileFilter that accepts both images and documents.
+ * Frontend enforces tighter per-type size/resolution limits.
+ */
+function combinedFileFilter(req, file, cb) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const isImage = IMAGE_TYPES.includes(file.mimetype) && IMAGE_EXT.test(ext);
+  const isDoc = DOC_TYPES.includes(file.mimetype) && DOC_EXT.test(ext);
+
+  if (isImage || isDoc) {
+    cb(null, true);
+  } else {
+    cb(new Error(
+      `Unsupported file type "${file.mimetype}". ` +
+      'Allowed images: JPEG, PNG, WebP, SVG, GIF. ' +
+      'Allowed documents: PDF, Word, Excel, CSV, TXT.'
+    ));
+  }
+}
+
+// ── Storage configuration ────────────────────────────────────────────────────
+
 let upload;
 
 // Check if AWS credentials are configured
@@ -31,17 +71,8 @@ if (hasS3Config) {
         cb(null, `uploads/${uniqueSuffix}${ext}`);
       },
     }),
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
-    fileFilter: (req, file, cb) => {
-      const allowedTypes = /jpeg|jpg|png|gif|webp|svg/;
-      const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-      const mimetype = allowedTypes.test(file.mimetype);
-      if (extname && mimetype) {
-        cb(null, true);
-      } else {
-        cb(new Error('Only image files are allowed'));
-      }
-    },
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB backend max; frontend enforces tighter per-type limits
+    fileFilter: combinedFileFilter,
   });
 } else {
   // Fallback to local disk storage for development
@@ -61,17 +92,8 @@ if (hasS3Config) {
         cb(null, `${uniqueSuffix}${ext}`);
       },
     }),
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-      const allowedTypes = /jpeg|jpg|png|gif|webp|svg/;
-      const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-      const mimetype = allowedTypes.test(file.mimetype);
-      if (extname && mimetype) {
-        cb(null, true);
-      } else {
-        cb(new Error('Only image files are allowed'));
-      }
-    },
+    limits: { fileSize: 20 * 1024 * 1024 }, // 20MB backend max
+    fileFilter: combinedFileFilter,
   });
 }
 

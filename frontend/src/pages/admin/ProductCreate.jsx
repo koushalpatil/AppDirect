@@ -2,16 +2,50 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productAPI, catalogAPI, uploadAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { Check, Plus, Trash2, Upload, Image } from 'lucide-react';
+import { Check, Plus, Trash2, Upload, Image, AlertCircle } from 'lucide-react';
 import './Admin.css';
+import {
+  validateLogoFile,
+  validateScreenshotFile,
+  validateResourceFile,
+  validateTag,
+  validateProductForm,
+  LIMITS,
+  LOGO_MAX_SIZE_MB,
+  SCREENSHOT_MAX_PER_SECTION,
+  RESOURCE_MAX_SIZE_MB,
+} from '../../utils/productValidation';
 
 const STEPS = ['Define Product', 'Listing Information', 'Product Information'];
+
+// Character counter helper
+function CharCount({ value, max, warn = 0.85 }) {
+  const len = (value || '').length;
+  const ratio = len / max;
+  const color = ratio >= 1 ? '#ef4444' : ratio >= warn ? '#f59e0b' : '#9ca3af';
+  return (
+    <span style={{ fontSize: 11, color, float: 'right', marginTop: 2 }}>
+      {len}/{max}
+    </span>
+  );
+}
+
+// Inline validation message
+function FieldError({ msg }) {
+  if (!msg) return null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, color: '#ef4444', fontSize: 12 }}>
+      <AlertCircle size={12} /> {msg}
+    </div>
+  );
+}
 
 export default function ProductCreate() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [attributes, setAttributes] = useState([]);
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const [form, setForm] = useState({
     name: '',
@@ -24,6 +58,7 @@ export default function ProductCreate() {
     attributes: [],
     supportDescription: '',
     policies: '',
+    resources: [],
   });
 
   const [tagInput, setTagInput] = useState('');
@@ -36,43 +71,54 @@ export default function ProductCreate() {
     try {
       const res = await catalogAPI.getAll();
       setAttributes(res.data.attributes || []);
-    } catch (err) {
+    } catch {
       console.error('Failed to load attributes');
     }
   };
 
-  const update = (field, val) => setForm(prev => ({ ...prev, [field]: val }));
+  const update = (field, val) => {
+    setForm(prev => ({ ...prev, [field]: val }));
+    // Clear field error on change
+    setFieldErrors(prev => ({ ...prev, [field]: null }));
+  };
 
-  // Tag management
+  const setFieldError = (field, msg) =>
+    setFieldErrors(prev => ({ ...prev, [field]: msg }));
+
+  // ── Tag management ──────────────────────────────────────────────────────────
   const addTag = () => {
     const t = tagInput.trim();
-    if (t && !form.tags.includes(t)) {
-      update('tags', [...form.tags, t]);
-      setTagInput('');
+    const result = validateTag(t, form.tags);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
     }
+    update('tags', [...form.tags, t]);
+    setTagInput('');
   };
   const removeTag = (tag) => update('tags', form.tags.filter(t => t !== tag));
 
-  // Overview/Feature repeaters
-  const addRepeaterItem = (field) => {
+  // ── Repeater helpers ────────────────────────────────────────────────────────
+  const addRepeaterItem = (field) =>
     update(field, [...form[field], { title: '', description: '', screenshots: [] }]);
-  };
-  const removeRepeaterItem = (field, idx) => {
+  const removeRepeaterItem = (field, idx) =>
     update(field, form[field].filter((_, i) => i !== idx));
-  };
   const updateRepeater = (field, idx, key, val) => {
     const items = [...form[field]];
     items[idx] = { ...items[idx], [key]: val };
     update(field, items);
   };
 
-  // Attribute management
+  // ── Attribute management ────────────────────────────────────────────────────
   const toggleAttribute = (attr) => {
     const existing = form.attributes.find(a => a.attributeId === attr._id);
     if (existing) {
       update('attributes', form.attributes.filter(a => a.attributeId !== attr._id));
     } else {
-      update('attributes', [...form.attributes, { attributeId: attr._id, attributeName: attr.name, values: [] }]);
+      update('attributes', [
+        ...form.attributes,
+        { attributeId: attr._id, attributeName: attr.name, values: [] },
+      ]);
     }
   };
   const setAttributeValues = (attrId, values) => {
@@ -81,66 +127,135 @@ export default function ProductCreate() {
     ));
   };
 
-  // File uploads
+  // ── Logo upload with full validation ───────────────────────────────────────
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
+
+    const result = await validateLogoFile(file);
+    if (!result.ok) {
+      toast.error(result.error);
+      setFieldError('logo', result.error);
+      return;
+    }
+    setFieldError('logo', null);
     setUploadingLogo(true);
     try {
       const res = await uploadAPI.single(file);
       update('logo', res.data.url);
-      toast.success('Logo uploaded');
+      toast.success('Logo uploaded successfully');
     } catch {
-      toast.error('Logo upload failed');
+      toast.error('Logo upload failed. Please try again.');
     } finally {
       setUploadingLogo(false);
     }
   };
 
-  const handleScreenshotUpload = async (field, idx, e) => {
+  // ── Screenshot upload with validation ───────────────────────────────────────
+  const handleMultipleFileUpload = async (field, idx, e) => {
     const files = Array.from(e.target.files || []);
+    e.target.value = '';
     if (!files.length) return;
+
+    const currentCount = form[field][idx].screenshots.length;
+    if (currentCount >= SCREENSHOT_MAX_PER_SECTION) {
+      toast.error(`Maximum ${SCREENSHOT_MAX_PER_SECTION} screenshots per section.`);
+      return;
+    }
+    const available = SCREENSHOT_MAX_PER_SECTION - currentCount;
+    const toUpload = files.slice(0, available);
+    if (files.length > available) {
+      toast(`Only ${available} more screenshot(s) can be added.`, { icon: '⚠️' });
+    }
+
+    for (const file of toUpload) {
+      const check = validateScreenshotFile(file);
+      if (!check.ok) {
+        toast.error(`${file.name}: ${check.error}`);
+        return;
+      }
+    }
+
     const key = `${field}-${idx}`;
     setUploadingScreenshots(prev => ({ ...prev, [key]: true }));
     try {
-      const res = await uploadAPI.multiple(files);
+      const res = await uploadAPI.multiple(toUpload);
       const urls = res.data.files.map(f => f.url);
       const items = [...form[field]];
       items[idx] = { ...items[idx], screenshots: [...items[idx].screenshots, ...urls] };
       update(field, items);
-      toast.success('Screenshots uploaded');
+      toast.success(`${urls.length} screenshot(s) uploaded`);
     } catch {
-      toast.error('Screenshot upload failed');
+      toast.error('Screenshot upload failed.');
     } finally {
       setUploadingScreenshots(prev => ({ ...prev, [key]: false }));
     }
   };
 
+  // ── Resource upload with validation ────────────────────────────────────────
+  const handleResourceUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    const check = validateResourceFile(file);
+    if (!check.ok) {
+      toast.error(check.error);
+      return;
+    }
+
+    const key = 'resource-upload';
+    setUploadingScreenshots(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await uploadAPI.single(file);
+      update('resources', [...form.resources, { name: file.name, url: res.data.url }]);
+      toast.success('Resource file added');
+    } catch {
+      toast.error('Resource upload failed.');
+    } finally {
+      setUploadingScreenshots(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const removeResource = (idx) =>
+    update('resources', form.resources.filter((_, i) => i !== idx));
+
   const removeScreenshot = (field, itemIdx, ssIdx) => {
     const items = [...form[field]];
-    items[itemIdx] = { ...items[itemIdx], screenshots: items[itemIdx].screenshots.filter((_, i) => i !== ssIdx) };
+    items[itemIdx] = {
+      ...items[itemIdx],
+      screenshots: items[itemIdx].screenshots.filter((_, i) => i !== ssIdx),
+    };
     update(field, items);
   };
 
-  // Validation
+  // ── Step validation ─────────────────────────────────────────────────────────
   const validateStep = () => {
-    if (step === 0 && !form.name.trim()) {
-      toast.error('Product name is required');
-      return false;
+    if (step === 0) {
+      const name = form.name.trim();
+      if (!name) { toast.error('Product name is required'); return false; }
+      if (name.length < LIMITS.name.min) { toast.error(`Name must be at least ${LIMITS.name.min} characters`); return false; }
+      if (name.length > LIMITS.name.max) { toast.error(`Name must be under ${LIMITS.name.max} characters`); return false; }
     }
     return true;
   };
 
-  // Save
+  // ── Save ────────────────────────────────────────────────────────────────────
   const handleSave = async (status) => {
-    if (!form.name.trim()) return toast.error('Product name is required');
+    const formErrors = validateProductForm(form);
+    if (formErrors.length > 0) {
+      formErrors.forEach(err => toast.error(err));
+      return;
+    }
 
     // Check required attributes
     const requiredAttrs = attributes.filter(a => a.requiredInProductEditor);
     for (const attr of requiredAttrs) {
       const formAttr = form.attributes.find(a => a.attributeId === attr._id);
       if (!formAttr || formAttr.values.length === 0) {
-        return toast.error(`"${attr.name}" is required`);
+        toast.error(`"${attr.name}" attribute is required`);
+        return;
       }
     }
 
@@ -156,6 +271,96 @@ export default function ProductCreate() {
     }
   };
 
+  // ── Shared repeater section renderer ───────────────────────────────────────
+  const renderRepeaterSection = (field, label) => (
+    <div className="wizard-section">
+      <h3 className="wizard-section-title">{label}</h3>
+      {form[field].map((item, idx) => (
+        <div key={idx} className="repeater-item">
+          {form[field].length > 1 && field === 'features' && (
+            <button
+              className="btn btn-icon btn-ghost repeater-remove"
+              onClick={() => removeRepeaterItem(field, idx)}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+          <div className="form-group">
+            <label className="form-label">
+              Title
+              <CharCount value={item.title} max={LIMITS[`${field.slice(0,-1)}Title`]?.max || 100} />
+            </label>
+            <input
+              type="text"
+              className="form-input"
+              maxLength={100}
+              value={item.title}
+              onChange={(e) => updateRepeater(field, idx, 'title', e.target.value)}
+              placeholder={`${label} title`}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">
+              Description
+              <CharCount value={item.description} max={5000} warn={0.9} />
+            </label>
+            <textarea
+              className="form-textarea"
+              maxLength={5000}
+              value={item.description}
+              onChange={(e) => updateRepeater(field, idx, 'description', e.target.value)}
+              placeholder={`${label} description`}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">
+              Screenshots
+              <span style={{ fontSize: 11, color: '#9ca3af', float: 'right' }}>
+                {item.screenshots.length}/{SCREENSHOT_MAX_PER_SECTION} · Max 5MB each · JPEG/PNG/WebP/GIF
+              </span>
+            </label>
+            <div className="screenshots-grid">
+              {item.screenshots.map((ss, ssIdx) => (
+                <div key={ssIdx} style={{ position: 'relative' }}>
+                  <img src={ss} alt="" className="screenshot-thumb" />
+                  <button
+                    className="sliding-image-remove"
+                    onClick={() => removeScreenshot(field, idx, ssIdx)}
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+              {item.screenshots.length < SCREENSHOT_MAX_PER_SECTION && (
+                uploadingScreenshots[`${field}-${idx}`] ? (
+                  <div className="screenshot-upload-btn" style={{ cursor: 'default' }}>
+                    <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+                  </div>
+                ) : (
+                  <label className="screenshot-upload-btn" title="Add screenshots">
+                    <Image size={16} />
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      multiple
+                      onChange={(e) => handleMultipleFileUpload(field, idx, e)}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+                )
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+      {field === 'features' && (
+        <button type="button" className="repeater-add" onClick={() => addRepeaterItem(field)}>
+          <Plus size={16} /> Add Feature
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <div className="fade-in">
       <div className="page-header">
@@ -168,34 +373,47 @@ export default function ProductCreate() {
       {/* Stepper */}
       <div className="stepper">
         {STEPS.map((label, i) => (
-          <div key={i} className={`step ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}`}>
-            <div className="step-number">{i < step ? <Check size={14} /> : i + 1}</div>
+          <div
+            key={i}
+            className={`step ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}`}
+          >
+            <div className="step-number">
+              {i < step ? <Check size={14} /> : i + 1}
+            </div>
             <span className="step-label">{label}</span>
           </div>
         ))}
       </div>
 
-      {/* Step 1: Define Product */}
+      {/* ── Step 1: Define Product ─────────────────────────────────────────── */}
       {step === 0 && (
         <div className="wizard-content card card-body">
           <div className="wizard-section">
             <h3 className="wizard-section-title">Define Your Product</h3>
             <div className="form-group">
-              <label className="form-label">Product Name <span className="required">*</span></label>
+              <label className="form-label">
+                Product Name <span className="required">*</span>
+                <CharCount value={form.name} max={LIMITS.name.max} />
+              </label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="Enter product name"
+                placeholder="Enter product name (2–100 characters)"
+                maxLength={LIMITS.name.max}
                 value={form.name}
                 onChange={(e) => update('name', e.target.value)}
                 autoFocus
               />
+              <FieldError msg={fieldErrors.name} />
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+                Required · 2–{LIMITS.name.max} characters
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Step 2: Listing Information */}
+      {/* ── Step 2: Listing Information ────────────────────────────────────── */}
       {step === 1 && (
         <div className="wizard-content card card-body">
           <div className="wizard-section">
@@ -203,43 +421,102 @@ export default function ProductCreate() {
 
             <div className="grid-2">
               <div className="form-group">
-                <label className="form-label">Tagline</label>
-                <input type="text" className="form-input" placeholder="Short description" value={form.tagline} onChange={(e) => update('tagline', e.target.value)} />
+                <label className="form-label">
+                  Tagline
+                  <CharCount value={form.tagline} max={LIMITS.tagline.max} />
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Short product description"
+                  maxLength={LIMITS.tagline.max}
+                  value={form.tagline}
+                  onChange={(e) => update('tagline', e.target.value)}
+                />
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+                  Optional · Max {LIMITS.tagline.max} characters
+                </div>
               </div>
               <div className="form-group">
-                <label className="form-label">Developer Name</label>
-                <input type="text" className="form-input" placeholder="Developer or company name" value={form.developerName} onChange={(e) => update('developerName', e.target.value)} />
+                <label className="form-label">
+                  Developer Name
+                  <CharCount value={form.developerName} max={LIMITS.developerName.max} />
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Developer or company name"
+                  maxLength={LIMITS.developerName.max}
+                  value={form.developerName}
+                  onChange={(e) => update('developerName', e.target.value)}
+                />
               </div>
             </div>
 
             {/* Logo */}
             <div className="form-group">
               <label className="form-label">Product Logo</label>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>
+                Accepted: JPEG, PNG, WebP, SVG · Max size: {LOGO_MAX_SIZE_MB}MB · Min 50×50px · Max 4096×4096px
+              </div>
               <div className="image-upload-area">
-                <input type="file" accept="image/*" onChange={handleLogoUpload} disabled={uploadingLogo} />
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                  onChange={handleLogoUpload}
+                  disabled={uploadingLogo}
+                />
                 {uploadingLogo ? (
-                  <div style={{ padding: '20px', color: 'var(--text-muted)' }}>
+                  <div style={{ padding: '20px', color: 'var(--text-muted)', textAlign: 'center' }}>
                     <div className="spinner mb-sm" style={{ margin: '0 auto 8px' }} />
-                    <p>Uploading...</p>
+                    <p>Uploading & validating…</p>
                   </div>
                 ) : form.logo ? (
-                  <img src={form.logo} alt="Logo" className="image-preview" style={{ maxHeight: 120, objectFit: 'contain' }} />
+                  <div style={{ padding: '12px', textAlign: 'center' }}>
+                    <img
+                      src={form.logo}
+                      alt="Logo preview"
+                      className="image-preview"
+                      style={{ maxHeight: 100, maxWidth: 200, objectFit: 'contain', borderRadius: 8 }}
+                    />
+                    <div style={{ marginTop: 8, fontSize: 12, color: '#6b7280' }}>
+                      Click to replace
+                    </div>
+                  </div>
                 ) : (
-                  <div style={{ padding: '20px', color: 'var(--text-muted)' }}>
+                  <div style={{ padding: '20px', color: 'var(--text-muted)', textAlign: 'center' }}>
                     <Upload size={24} style={{ marginBottom: 8 }} />
                     <p>Click or drag to upload logo</p>
                   </div>
                 )}
               </div>
+              <FieldError msg={fieldErrors.logo} />
             </div>
 
             {/* Tags */}
             <div className="form-group">
-              <label className="form-label">Tags</label>
-              <div className="option-input-row">
-                <input type="text" className="form-input" placeholder="Add a tag" value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())} />
-                <button type="button" className="btn btn-secondary" onClick={addTag}>Add</button>
-              </div>
+              <label className="form-label">
+                Tags
+                <span style={{ fontSize: 11, color: '#9ca3af', float: 'right' }}>
+                  {form.tags.length}/{LIMITS.maxTags} tags · Max {LIMITS.tag.max} chars each
+                </span>
+              </label>
+              {form.tags.length < LIMITS.maxTags && (
+                <div className="option-input-row">
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Type a tag and press Enter or Add"
+                    maxLength={LIMITS.tag.max}
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                  />
+                  <button type="button" className="btn btn-secondary" onClick={addTag}>
+                    Add
+                  </button>
+                </div>
+              )}
               <div className="flex gap-sm flex-wrap mt-sm">
                 {form.tags.map(tag => (
                   <span key={tag} className="tag">
@@ -251,107 +528,20 @@ export default function ProductCreate() {
             </div>
           </div>
 
-          {/* Overview */}
-          <div className="wizard-section">
-            <h3 className="wizard-section-title">Overview</h3>
-            {form.overview.map((item, idx) => (
-              <div key={idx} className="repeater-item">
-                {form.overview.length > 1 && (
-                  <button className="btn btn-icon btn-ghost repeater-remove" onClick={() => removeRepeaterItem('overview', idx)}>
-                    <Trash2 size={14} />
-                  </button>
-                )}
-                <div className="form-group">
-                  <label className="form-label">Title</label>
-                  <input type="text" className="form-input" value={item.title} onChange={(e) => updateRepeater('overview', idx, 'title', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Description</label>
-                  <textarea className="form-textarea" value={item.description} onChange={(e) => updateRepeater('overview', idx, 'description', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Screenshots</label>
-                  <div className="screenshots-grid">
-                    {item.screenshots.map((ss, ssIdx) => (
-                      <div key={ssIdx} style={{ position: 'relative' }}>
-                        <img src={ss} alt="" className="screenshot-thumb" />
-                        <button className="sliding-image-remove" onClick={() => removeScreenshot('overview', idx, ssIdx)}>&times;</button>
-                      </div>
-                    ))}
-                    {uploadingScreenshots[`overview-${idx}`] ? (
-                      <div className="screenshot-upload-btn" style={{ cursor: 'default' }}>
-                        <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
-                      </div>
-                    ) : (
-                      <label className="screenshot-upload-btn">
-                        <Image size={16} />
-                        <input type="file" accept="image/*" multiple onChange={(e) => handleScreenshotUpload('overview', idx, e)} style={{ display: 'none' }} />
-                      </label>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            <button type="button" className="repeater-add" onClick={() => addRepeaterItem('overview')}>
-              <Plus size={16} /> Add Overview Section
-            </button>
-          </div>
-
-          {/* Features */}
-          <div className="wizard-section">
-            <h3 className="wizard-section-title">Features</h3>
-            {form.features.map((item, idx) => (
-              <div key={idx} className="repeater-item">
-                {form.features.length > 1 && (
-                  <button className="btn btn-icon btn-ghost repeater-remove" onClick={() => removeRepeaterItem('features', idx)}>
-                    <Trash2 size={14} />
-                  </button>
-                )}
-                <div className="form-group">
-                  <label className="form-label">Title</label>
-                  <input type="text" className="form-input" value={item.title} onChange={(e) => updateRepeater('features', idx, 'title', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Description</label>
-                  <textarea className="form-textarea" value={item.description} onChange={(e) => updateRepeater('features', idx, 'description', e.target.value)} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Screenshots</label>
-                  <div className="screenshots-grid">
-                    {item.screenshots.map((ss, ssIdx) => (
-                      <div key={ssIdx} style={{ position: 'relative' }}>
-                        <img src={ss} alt="" className="screenshot-thumb" />
-                        <button className="sliding-image-remove" onClick={() => removeScreenshot('features', idx, ssIdx)}>&times;</button>
-                      </div>
-                    ))}
-                    {uploadingScreenshots[`features-${idx}`] ? (
-                      <div className="screenshot-upload-btn" style={{ cursor: 'default' }}>
-                        <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
-                      </div>
-                    ) : (
-                      <label className="screenshot-upload-btn">
-                        <Image size={16} />
-                        <input type="file" accept="image/*" multiple onChange={(e) => handleScreenshotUpload('features', idx, e)} style={{ display: 'none' }} />
-                      </label>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-            <button type="button" className="repeater-add" onClick={() => addRepeaterItem('features')}>
-              <Plus size={16} /> Add Feature
-            </button>
-          </div>
+          {renderRepeaterSection('overview', 'Overview')}
+          {renderRepeaterSection('features', 'Features')}
         </div>
       )}
 
-      {/* Step 3: Product Information */}
+      {/* ── Step 3: Product Information ────────────────────────────────────── */}
       {step === 2 && (
         <div className="wizard-content card card-body">
           <div className="wizard-section">
             <h3 className="wizard-section-title">Attributes</h3>
             {attributes.length === 0 ? (
-              <p className="text-muted" style={{ fontSize: '14px' }}>No attributes configured. Go to Catalog Management to add attributes.</p>
+              <p className="text-muted" style={{ fontSize: '14px' }}>
+                No attributes configured. Go to Catalog Management to add attributes.
+              </p>
             ) : (
               attributes.map(attr => {
                 const formAttr = form.attributes.find(a => a.attributeId === attr._id);
@@ -361,11 +551,21 @@ export default function ProductCreate() {
                     <div className="flex items-center justify-between mb-md">
                       <div>
                         <span style={{ fontWeight: 600 }}>{attr.name}</span>
-                        {attr.requiredInProductEditor && <span className="required" style={{ marginLeft: 4 }}>*</span>}
-                        {attr.description && <p className="text-muted" style={{ fontSize: '12px', marginTop: 2 }}>{attr.description}</p>}
+                        {attr.requiredInProductEditor && (
+                          <span className="required" style={{ marginLeft: 4 }}>*</span>
+                        )}
+                        {attr.description && (
+                          <p className="text-muted" style={{ fontSize: '12px', marginTop: 2 }}>
+                            {attr.description}
+                          </p>
+                        )}
                       </div>
                       <label className="toggle">
-                        <input type="checkbox" checked={isSelected} onChange={() => toggleAttribute(attr)} />
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleAttribute(attr)}
+                        />
                         <span className="toggle-slider" />
                       </label>
                     </div>
@@ -395,14 +595,90 @@ export default function ProductCreate() {
           </div>
 
           <div className="wizard-section">
-            <h3 className="wizard-section-title">Support & Policies</h3>
+            <h3 className="wizard-section-title">Support &amp; Policies</h3>
             <div className="form-group">
-              <label className="form-label">Support Description</label>
-              <textarea className="form-textarea" placeholder="Describe the support offered for this product" value={form.supportDescription} onChange={(e) => update('supportDescription', e.target.value)} />
+              <label className="form-label">
+                Support Description
+                <CharCount value={form.supportDescription} max={LIMITS.supportDescription.max} />
+              </label>
+              <textarea
+                className="form-textarea"
+                maxLength={LIMITS.supportDescription.max}
+                placeholder="Describe the support offered for this product"
+                value={form.supportDescription}
+                onChange={(e) => update('supportDescription', e.target.value)}
+              />
             </div>
             <div className="form-group">
-              <label className="form-label">Policies</label>
-              <textarea className="form-textarea" placeholder="Product policies, terms of use, etc." value={form.policies} onChange={(e) => update('policies', e.target.value)} />
+              <label className="form-label">
+                Policies
+                <CharCount value={form.policies} max={LIMITS.policies.max} />
+              </label>
+              <textarea
+                className="form-textarea"
+                maxLength={LIMITS.policies.max}
+                placeholder="Product policies, terms of use, etc."
+                value={form.policies}
+                onChange={(e) => update('policies', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">Resources</h3>
+            <p className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>
+              Upload PDF, Word, Excel, CSV or TXT documentation · Max {RESOURCE_MAX_SIZE_MB}MB per file
+            </p>
+            {form.resources.map((resItem, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '12px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  marginBottom: '8px',
+                }}
+              >
+                <span style={{ flex: 1, fontSize: '14px' }}>{resItem.name}</span>
+                <a
+                  href={resItem.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 12, color: '#0183FF' }}
+                >
+                  Preview
+                </a>
+                <button
+                  type="button"
+                  className="btn btn-icon btn-ghost repeater-remove"
+                  onClick={() => removeResource(idx)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+
+            <div style={{ marginTop: '16px' }}>
+              {uploadingScreenshots['resource-upload'] ? (
+                <div className="spinner mb-sm" />
+              ) : (
+                <label
+                  className="btn btn-secondary"
+                  style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                >
+                  <Upload size={16} /> Add Resource File
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.csv,.xls,.xlsx,.txt"
+                    onChange={handleResourceUpload}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              )}
             </div>
           </div>
         </div>
@@ -420,15 +696,26 @@ export default function ProductCreate() {
         <div className="flex gap-sm">
           {step === STEPS.length - 1 ? (
             <>
-              <button className="btn btn-secondary" onClick={() => handleSave('draft')} disabled={saving}>
-                Save as Draft
+              <button
+                className="btn btn-secondary"
+                onClick={() => handleSave('draft')}
+                disabled={saving}
+              >
+                {saving ? 'Saving…' : 'Save as Draft'}
               </button>
-              <button className="btn btn-primary" onClick={() => handleSave('published')} disabled={saving}>
-                {saving ? 'Publishing...' : 'Publish'}
+              <button
+                className="btn btn-primary"
+                onClick={() => handleSave('published')}
+                disabled={saving}
+              >
+                {saving ? 'Publishing…' : 'Publish'}
               </button>
             </>
           ) : (
-            <button className="btn btn-primary" onClick={() => validateStep() && setStep(s => s + 1)}>
+            <button
+              className="btn btn-primary"
+              onClick={() => validateStep() && setStep(s => s + 1)}
+            >
               Next
             </button>
           )}

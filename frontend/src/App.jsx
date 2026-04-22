@@ -21,7 +21,9 @@ import HomepageConfig from './pages/admin/HomepageConfig';
 
 // Public pages
 import HomePage from './pages/public/HomePage';
+import AllProducts from './pages/public/AllProducts';
 import ProductDetail from './pages/public/ProductDetail';
+import ProductContact from './pages/public/ProductContact';
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, loading } = useAuth();
@@ -54,9 +56,15 @@ function AppRoutes() {
       </Route>
 
       {/* Public */}
-      <Route path="/" element={<PublicLayout />}>
+      <Route path="/" element={
+        <ProtectedRoute>
+          <PublicLayout />
+        </ProtectedRoute>
+      }>
         <Route index element={<HomePage />} />
+        <Route path="products" element={<AllProducts />} />
         <Route path="products/:id" element={<ProductDetail />} />
+        <Route path="products/:id/add-lead" element={<ProductContact />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -73,10 +81,11 @@ export default function App() {
           position="top-right"
           toastOptions={{
             style: {
-              background: '#161625',
-              color: '#f1f5f9',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: '#ffffff',
+              color: '#0f172a',
+              border: '1px solid #e2e8f0',
               borderRadius: '10px',
+              boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
             },
           }}
         />

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { configAPI } from '../../services/api';
-import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import './Public.css';
 
 export default function HomePage() {
@@ -35,30 +35,21 @@ export default function HomePage() {
   const nextSlide = () => setCurrentSlide(prev => (prev + 1) % homepage.slidingImages.length);
   const prevSlide = () => setCurrentSlide(prev => (prev - 1 + homepage.slidingImages.length) % homepage.slidingImages.length);
 
-  if (loading) return <div className="page-loader" style={{ minHeight: '60vh' }}><div className="spinner" /></div>;
+  if (loading) return <div className="pub-loader"><div className="pub-spinner" /></div>;
 
   return (
-    <div className="homepage fade-in">
+    <div className="homepage">
       {/* Hero Section */}
-      <section className="hero-section">
+      <section className="pub-hero">
         {homepage.heroImage ? (
-          <div className="hero-image-wrapper">
-            <img src={homepage.heroImage} alt="Marketplace" className="hero-image" />
-            <div className="hero-overlay">
-              <div className="hero-content">
-                <h1 className="hero-title">Discover the Best Business Applications</h1>
-                <p className="hero-subtitle">Find, compare, and integrate the top cloud solutions for your business</p>
-                <Link to="#categories" className="btn btn-primary btn-lg">
-                  Explore Products <ArrowRight size={18} />
-                </Link>
-              </div>
-            </div>
+          <div className="pub-hero-img-wrap">
+            <img src={homepage.heroImage} alt="Marketplace" className="pub-hero-img" />
           </div>
         ) : (
-          <div className="hero-placeholder">
-            <div className="hero-content">
-              <h1 className="hero-title">Discover the Best Business Applications</h1>
-              <p className="hero-subtitle">Find, compare, and integrate the top cloud solutions for your business</p>
+          <div className="pub-hero-placeholder">
+            <div style={{ textAlign: 'center' }}>
+              <h1>Discover the Best Business Applications</h1>
+              <p>Find, compare, and integrate the top cloud solutions for your business</p>
             </div>
           </div>
         )}
@@ -66,22 +57,22 @@ export default function HomePage() {
 
       {/* Sliding Images */}
       {homepage.slidingImages.length > 0 && (
-        <section className="slider-section">
-          <div className="slider-container">
-            <div className="slider-track" style={{ transform: `translateX(-${currentSlide * 100}%)` }}>
+        <section className="pub-slider-section">
+          <div className="pub-slider-container">
+            <div className="pub-slider-track" style={{ transform: `translateX(-${currentSlide * 100}%)` }}>
               {homepage.slidingImages.map((img, idx) => (
-                <div key={idx} className="slider-slide">
+                <div key={idx} className="pub-slider-slide">
                   <img src={img} alt={`Slide ${idx + 1}`} />
                 </div>
               ))}
             </div>
             {homepage.slidingImages.length > 1 && (
               <>
-                <button className="slider-btn slider-prev" onClick={prevSlide}><ChevronLeft size={20} /></button>
-                <button className="slider-btn slider-next" onClick={nextSlide}><ChevronRight size={20} /></button>
-                <div className="slider-dots">
+                <button className="pub-slider-btn pub-slider-prev" onClick={prevSlide}><ChevronLeft size={20} /></button>
+                <button className="pub-slider-btn pub-slider-next" onClick={nextSlide}><ChevronRight size={20} /></button>
+                <div className="pub-slider-dots">
                   {homepage.slidingImages.map((_, idx) => (
-                    <button key={idx} className={`slider-dot ${idx === currentSlide ? 'active' : ''}`} onClick={() => setCurrentSlide(idx)} />
+                    <button key={idx} className={`pub-slider-dot ${idx === currentSlide ? 'active' : ''}`} onClick={() => setCurrentSlide(idx)} />
                   ))}
                 </div>
               </>
@@ -91,49 +82,40 @@ export default function HomePage() {
       )}
 
       {/* Categories & Products */}
-      <section className="categories-section" id="categories">
-        <div className="section-container">
+      <section className="pub-categories">
+        <div className="pub-section">
           {homepage.categories.length > 0 ? (
             homepage.categories.map((cat, idx) => (
-              <div key={idx} className="category-block">
-                <div className="category-header">
-                  <h2 className="category-title">{cat.title || cat.categoryValue || cat.categoryName}</h2>
-                  <div className="category-divider" />
-                </div>
+              <div key={idx} className="pub-cat-block">
+                <h2 className="pub-cat-title">{cat.title || cat.categoryValue || cat.categoryName}</h2>
                 {cat.products && cat.products.length > 0 ? (
-                  <div className="products-row">
+                  <div className="pub-products-row">
                     {cat.products.map(product => (
-                      <Link key={product._id} to={`/products/${product._id}`} className="product-tile">
-                        <div className="product-tile-logo">
+                      <Link key={product._id} to={`/products/${product._id}`} className="pub-product-card grid">
+                        <div className="pub-card-logo-wrap">
                           {product.logo ? (
                             <img src={product.logo} alt={product.name} />
                           ) : (
-                            <div className="product-tile-logo-placeholder">{product.name?.[0]}</div>
+                            <div className="pub-card-logo-placeholder">{product.name?.[0]}</div>
                           )}
                         </div>
-                        <div className="product-tile-info">
-                          <h3 className="product-tile-name">{product.name}</h3>
-                          {product.tagline && <p className="product-tile-tagline">{product.tagline}</p>}
+                        <div className="pub-card-content">
+                          <div className="pub-card-name">{product.name}</div>
+                          {product.developerName && <div className="pub-card-developer">{product.developerName}</div>}
+                          {product.tagline && <div className="pub-card-tagline">{product.tagline}</div>}
                         </div>
-                        {product.tags && product.tags.length > 0 && (
-                          <div className="product-tile-tags">
-                            {product.tags.slice(0, 3).map(tag => (
-                              <span key={tag} className="tag">{tag}</span>
-                            ))}
-                          </div>
-                        )}
                       </Link>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted" style={{ padding: '20px 0', fontSize: 14 }}>No products in this category yet</p>
+                  <p style={{ color: '#9ca3af', fontSize: 14, padding: '20px 0' }}>No products in this category yet</p>
                 )}
               </div>
             ))
           ) : (
-            <div className="empty-hero">
-              <h2>Welcome to AppDirect</h2>
-              <p>Browse our marketplace for the best business solutions</p>
+            <div style={{ textAlign: 'center', padding: '80px 0' }}>
+              <h2 style={{ fontSize: 28, fontWeight: 800, color: '#111827' }}>Welcome to AppDirect</h2>
+              <p style={{ color: '#6b7280', fontSize: 16, marginTop: 8 }}>Browse our marketplace for the best business solutions</p>
             </div>
           )}
         </div>

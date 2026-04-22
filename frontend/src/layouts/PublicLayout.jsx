@@ -1,32 +1,37 @@
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { catalogAPI } from '../services/api';
-import { productAPI } from '../services/api';
-import { LogOut, User, ChevronDown, Menu, X } from 'lucide-react';
+import { catalogAPI, productAPI } from '../services/api';
+import { ChevronDown, Search, LogOut, Menu, X } from 'lucide-react';
+import dblogo from '../assets/dblogo.png';
 import './PublicLayout.css';
 
 export default function PublicLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [categories, setCategories] = useState([]);
+  const [categoryAttrId, setCategoryAttrId] = useState(null);
   const [hoveredCategory, setHoveredCategory] = useState(null);
   const [categoryProducts, setCategoryProducts] = useState([]);
   const [megaMenuOpen, setMegaMenuOpen] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const megaMenuRef = useRef(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const dropdownRef = useRef(null);
   const timeoutRef = useRef(null);
+  const searchTimeoutRef = useRef(null);
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
+  useEffect(() => { loadCategories(); }, []);
 
   const loadCategories = async () => {
     try {
       const res = await catalogAPI.getPublic();
-      const catAttr = res.data.attributes.find(a => a.name === 'Category');
+      const attrs = res.data.attributes || [];
+      // Use first attribute that has showForFiltering or fallback to 'Category'
+      const catAttr = attrs.find(a => a.name === 'Category') || attrs[0];
       if (catAttr) {
         setCategories(catAttr.options || []);
+        setCategoryAttrId(catAttr._id);
       }
     } catch (err) {
       console.error('Failed to load categories', err);
@@ -35,12 +40,10 @@ export default function PublicLayout() {
 
   const handleCategoryHover = async (category) => {
     setHoveredCategory(category);
+    if (!categoryAttrId) return;
     try {
-      const catAttr = (await catalogAPI.getPublic()).data.attributes.find(a => a.name === 'Category');
-      if (catAttr) {
-        const res = await productAPI.getByAttribute({ attributeId: catAttr._id, value: category });
-        setCategoryProducts(res.data.products || []);
-      }
+      const res = await productAPI.getByAttribute({ attributeId: categoryAttrId, value: category });
+      setCategoryProducts(res.data.products || []);
     } catch {
       setCategoryProducts([]);
     }
@@ -59,69 +62,144 @@ export default function PublicLayout() {
     }, 200);
   };
 
-  return (
-    <div className="public-layout">
-      <header className="public-header">
-        <div className="header-container">
-          <Link to="/" className="header-brand">
-            <div className="brand-icon">A</div>
-            <span className="brand-name">AppDirect</span>
-          </Link>
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
-          <nav className="header-nav">
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+
+    if (val.trim().length > 1) {
+      searchTimeoutRef.current = setTimeout(async () => {
+        try {
+          const res = await productAPI.search({ search: val, limit: 5 });
+          setSuggestions(res.data.products || []);
+          setShowSuggestions(true);
+        } catch (err) {
+          console.error(err);
+        }
+      }, 300);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+      setShowSuggestions(false);
+    } else {
+      navigate('/products');
+    }
+  };
+
+  return (
+    <div className="pub-layout">
+      {/* Top Blue Header */}
+      <header className="pub-top-bar">
+        <div className="pub-top-container">
+          <Link to="/" className="pub-brand">
+            <img src={dblogo} alt="Darwinbox" className="pub-header-logo" />
+          </Link>
+          <div className="pub-top-actions">
+            {user ? (
+              <div className="pub-user-area">
+                <span className="pub-username">{user.firstName}</span>
+                {user.role === 'admin' && (
+                  <Link to="/admin" className="pub-top-link">Admin Panel</Link>
+                )}
+                <button className="pub-top-btn" onClick={() => { logout(); navigate('/'); }}>
+                  <LogOut size={16} />
+                </button>
+              </div>
+            ) : (
+              <div className="pub-auth-area">
+                <Link to="/login" className="pub-top-link">Log In</Link>
+                <Link to="/signup" className="pub-top-link pub-signup-btn">Sign Up</Link>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Secondary Nav with All Products + Search */}
+      <nav className="pub-nav-bar">
+        <div className="pub-nav-container">
+          <div className="pub-nav-left">
             <div
-              className="nav-dropdown-trigger"
+              className="pub-nav-dropdown"
               onMouseEnter={handleMegaEnter}
               onMouseLeave={handleMegaLeave}
             >
-              <span className="nav-link-main">
+              <Link to="/products" className="pub-nav-trigger">
                 All Products <ChevronDown size={14} />
-              </span>
+              </Link>
 
               {megaMenuOpen && (
-                <div className="mega-menu" ref={megaMenuRef}>
-                  <div className="mega-menu-categories">
-                    <h4>Categories</h4>
+                <div className="pub-mega-menu">
+                  <div className="pub-mega-cats">
+                    <Link to="/products" className="pub-mega-view-all" onClick={() => setMegaMenuOpen(false)}>
+                      View All
+                    </Link>
                     {categories.map(cat => (
                       <button
                         key={cat}
-                        className={`mega-category ${hoveredCategory === cat ? 'active' : ''}`}
+                        className={`pub-mega-cat ${hoveredCategory === cat ? 'active' : ''}`}
                         onMouseEnter={() => handleCategoryHover(cat)}
                       >
-                        {cat}
+                        {cat} <span className="cat-arrow">&rsaquo;</span>
                       </button>
                     ))}
                     {categories.length === 0 && (
-                      <p className="text-muted" style={{fontSize:'13px', padding:'8px'}}>No categories yet</p>
+                      <p className="pub-mega-empty">No categories yet</p>
                     )}
                   </div>
-                  <div className="mega-menu-products">
+                  <div className="pub-mega-products">
                     {hoveredCategory ? (
                       <>
-                        <h4>{hoveredCategory}</h4>
+                        {categoryAttrId && (
+                           <Link 
+                              to={`/products?${categoryAttrId}=${encodeURIComponent(hoveredCategory)}`} 
+                              className="pub-mega-view-all-right" 
+                              onClick={() => setMegaMenuOpen(false)}
+                           >
+                             View All
+                           </Link>
+                        )}
                         {categoryProducts.length > 0 ? (
-                          <div className="mega-products-grid">
+                          <div className="pub-mega-grid">
                             {categoryProducts.map(p => (
                               <Link
                                 key={p._id}
-                                to={`/products/${p._id}`}
-                                className="mega-product-item"
+                                to={`/products?${categoryAttrId}=${encodeURIComponent(hoveredCategory)}&search=${encodeURIComponent(p.name)}`}
+                                className="pub-mega-item"
                                 onClick={() => setMegaMenuOpen(false)}
                               >
-                                {p.logo && <img src={p.logo} alt={p.name} className="mega-product-logo" />}
+                                {p.logo && <img src={p.logo} alt={p.name} className="pub-mega-logo" />}
                                 <div>
-                                  <span className="mega-product-name">{p.name}</span>
-                                  {p.tagline && <span className="mega-product-tagline">{p.tagline}</span>}
+                                  <span className="pub-mega-name">{p.name}</span>
+                                  {p.tagline && <span className="pub-mega-tagline">{p.tagline}</span>}
                                 </div>
                               </Link>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-muted" style={{fontSize:'13px'}}>No products in this category</p>
+                          <p className="pub-mega-empty">No products in this category</p>
                         )}
                       </>
                     ) : (
-                      <div className="mega-placeholder">
+                      <div className="pub-mega-placeholder">
                         <p>Hover over a category to see products</p>
                       </div>
                     )}
@@ -129,44 +207,61 @@ export default function PublicLayout() {
                 </div>
               )}
             </div>
-          </nav>
+          </div>
 
-          <div className="header-actions">
-            {user ? (
-              <div className="header-user">
-                <span className="header-username">{user.firstName}</span>
-                {user.role === 'admin' && (
-                  <Link to="/admin" className="btn btn-sm btn-secondary">Admin Panel</Link>
-                )}
-                <button className="btn btn-sm btn-ghost" onClick={() => { logout(); navigate('/'); }}>
-                  <LogOut size={16} />
-                </button>
-              </div>
-            ) : (
-              <div className="header-auth">
-                <Link to="/login" className="btn btn-sm btn-ghost">Log In</Link>
-                <Link to="/signup" className="btn btn-sm btn-primary">Sign Up</Link>
+          <div className="pub-search-wrapper" ref={dropdownRef}>
+            <form className="pub-search-form" onSubmit={handleSearch}>
+              <input
+                type="text"
+                className="pub-search-input"
+                placeholder="Search Products"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                onFocus={() => {
+                  if (suggestions.length > 0) setShowSuggestions(true);
+                }}
+              />
+              <button type="submit" className="pub-search-btn">
+                <Search size={16} />
+              </button>
+            </form>
+
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="pub-search-suggestions">
+                {suggestions.map(p => (
+                  <Link
+                    key={p._id}
+                    to={`/products/${p._id}`}
+                    className="pub-suggestion-item"
+                    onClick={() => setShowSuggestions(false)}
+                  >
+                    {p.logo ? (
+                      <img src={p.logo} alt={p.name} className="pub-suggestion-logo" />
+                    ) : (
+                      <div className="pub-suggestion-logo-placeholder">{p.name?.[0]}</div>
+                    )}
+                    <div className="pub-suggestion-details">
+                      <div className="pub-suggestion-name">{p.name}</div>
+                      {p.tagline && <div className="pub-suggestion-tagline">{p.tagline}</div>}
+                    </div>
+                  </Link>
+                ))}
               </div>
             )}
-
-            <button className="mobile-toggle" onClick={() => setMobileOpen(!mobileOpen)}>
-              {mobileOpen ? <X size={22} /> : <Menu size={22} />}
-            </button>
           </div>
         </div>
-      </header>
+      </nav>
 
-      <main className="public-main">
+      <main className="pub-main">
         <Outlet />
       </main>
 
-      <footer className="public-footer">
-        <div className="footer-container">
-          <div className="footer-brand">
-            <div className="brand-icon small">A</div>
-            <span>AppDirect</span>
+      <footer className="pub-footer">
+        <div className="pub-footer-container">
+          <div className="pub-footer-brand">
+            <img src={dblogo} alt="Darwinbox" className="pub-footer-logo" />
           </div>
-          <p className="footer-copy">&copy; {new Date().getFullYear()} AppDirect. All rights reserved.</p>
+          <p className="pub-footer-copy">  Copyright &copy;{new Date().getFullYear()}.Darwinbox Digital Solutions Pvt. Ltd. All Rights Reserved.</p>
         </div>
       </footer>
     </div>

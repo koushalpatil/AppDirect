@@ -74,14 +74,6 @@ export default function Signup() {
             </div>
           </div>
 
-          <div className="form-group">
-            <label className="form-label">Register as</label>
-            <div className="role-toggle">
-              <button type="button" className={`role-option ${form.role === 'user' ? 'active' : ''}`} onClick={() => update('role', 'user')}>User</button>
-              <button type="button" className={`role-option ${form.role === 'admin' ? 'active' : ''}`} onClick={() => update('role', 'admin')}>Admin</button>
-            </div>
-          </div>
-
           <button type="submit" className="btn btn-primary btn-lg auth-submit" disabled={loading}>
             {loading ? 'Creating account...' : 'Create Account'}
           </button>

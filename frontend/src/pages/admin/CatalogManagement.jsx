@@ -153,7 +153,9 @@ export default function CatalogManagement() {
                   <td>
                     <div className="flex gap-xs">
                       <button className="btn btn-icon btn-ghost" onClick={() => openEdit(attr)} title="Edit"><Edit3 size={14} /></button>
-                      <button className="btn btn-icon btn-ghost" onClick={() => handleDelete(attr._id, attr.name)} title="Delete"><Trash2 size={14} /></button>
+                      {attr.name.toLowerCase() !== 'category' && (
+                        <button className="btn btn-icon btn-ghost" onClick={() => handleDelete(attr._id, attr.name)} title="Delete"><Trash2 size={14} /></button>
+                      )}
                     </div>
                   </td>
                 </tr>

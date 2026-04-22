@@ -10,12 +10,17 @@ const {
   getProductLogs,
   getPublishedProducts,
   getProductsByAttribute,
+  searchProducts,
+  getFilterFacets,
+  getPublicProduct,
 } = require('../controllers/productController');
 
 // Public routes
+router.get('/public/search', searchProducts);
+router.get('/public/facets', getFilterFacets);
 router.get('/public', getPublishedProducts);
 router.get('/public/by-attribute', getProductsByAttribute);
-router.get('/public/:id', getProduct);
+router.get('/public/:id', getPublicProduct);
 
 // Admin routes
 router.post('/', auth, adminOnly, createProduct);

@@ -116,7 +116,7 @@ exports.getPublicHomepage = async (req, res) => {
       .populate({
         path: 'homepageCategories.products',
         match: { status: 'published' },
-        select: 'name tagline logo tags',
+        select: 'name tagline logo tags developerName',
       });
 
     res.json({
