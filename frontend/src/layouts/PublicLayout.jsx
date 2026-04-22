@@ -62,6 +62,21 @@ export default function PublicLayout() {
     }, 200);
   };
 
+  const getCategoryFilterUrl = (category) => {
+    if (!categoryAttrId || !category) return '/products';
+    const params = new URLSearchParams();
+    params.set(categoryAttrId, category);
+    return `/products?${params.toString()}`;
+  };
+
+  const getCategoryProductFilterUrl = (category, productId) => {
+    if (!categoryAttrId || !category) return '/products';
+    const params = new URLSearchParams();
+    params.set(categoryAttrId, category);
+    if (productId) params.set('productIds', productId);
+    return `/products?${params.toString()}`;
+  };
+
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -157,6 +172,10 @@ export default function PublicLayout() {
                         key={cat}
                         className={`pub-mega-cat ${hoveredCategory === cat ? 'active' : ''}`}
                         onMouseEnter={() => handleCategoryHover(cat)}
+                        onClick={() => {
+                          navigate(getCategoryFilterUrl(cat));
+                          setMegaMenuOpen(false);
+                        }}
                       >
                         {cat} <span className="cat-arrow">&rsaquo;</span>
                       </button>
@@ -170,7 +189,7 @@ export default function PublicLayout() {
                       <>
                         {categoryAttrId && (
                            <Link 
-                              to={`/products?${categoryAttrId}=${encodeURIComponent(hoveredCategory)}`} 
+                            to={getCategoryFilterUrl(hoveredCategory)} 
                               className="pub-mega-view-all-right" 
                               onClick={() => setMegaMenuOpen(false)}
                            >
@@ -182,7 +201,7 @@ export default function PublicLayout() {
                             {categoryProducts.map(p => (
                               <Link
                                 key={p._id}
-                                to={`/products?${categoryAttrId}=${encodeURIComponent(hoveredCategory)}&search=${encodeURIComponent(p.name)}`}
+                                to={getCategoryProductFilterUrl(hoveredCategory, p._id)}
                                 className="pub-mega-item"
                                 onClick={() => setMegaMenuOpen(false)}
                               >

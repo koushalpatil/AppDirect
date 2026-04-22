@@ -1,16 +1,35 @@
 const mongoose = require('mongoose');
 
+const contactOptionSchema = new mongoose.Schema({
+  label: { type: String, required: true, trim: true },
+  value: { type: String, required: true, trim: true },
+}, { _id: false });
+
+const contactValidationSchema = new mongoose.Schema({
+  minLength: { type: Number },
+  maxLength: { type: Number },
+  regex: { type: String },
+  min: { type: Number },
+  max: { type: Number },
+  step: { type: Number },
+  minDate: { type: String },
+  maxDate: { type: String },
+}, { _id: false });
+
 const contactFieldSchema = new mongoose.Schema({
   fieldName: { type: String, required: true },
   label: { type: String, required: true },
   type: {
     type: String,
-    enum: ['text', 'email', 'tel', 'textarea', 'select', 'number'],
+    enum: ['text', 'textarea', 'email', 'number', 'select', 'radio', 'checkbox', 'date', 'file', 'tel'],
     default: 'text',
   },
   required: { type: Boolean, default: false },
   placeholder: { type: String },
-  options: [{ type: String }], // for select type
+  defaultValue: { type: mongoose.Schema.Types.Mixed },
+  helpText: { type: String },
+  options: [contactOptionSchema],
+  validations: { type: contactValidationSchema, default: () => ({}) },
   isDefault: { type: Boolean, default: false },
   order: { type: Number, default: 0 },
 }, { _id: true });

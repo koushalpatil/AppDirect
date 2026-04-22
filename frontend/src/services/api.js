@@ -73,6 +73,7 @@ export const configAPI = {
   // Public
   getPublicHomepage: () => api.get('/config/public/homepage'),
   getPublicContactForm: () => api.get('/config/public/contact-form'),
+  submitPublicContactForm: (data) => api.post('/config/public/contact-form/submit', data),
 };
 
 // Upload

@@ -8,11 +8,13 @@ const {
   updateHomepageConfig,
   getPublicHomepage,
   getPublicContactForm,
+  submitPublicContactForm,
 } = require('../controllers/configController');
 
 // Public routes
 router.get('/public/homepage', getPublicHomepage);
 router.get('/public/contact-form', getPublicContactForm);
+router.post('/public/contact-form/submit', submitPublicContactForm);
 
 // Admin routes
 router.get('/contact', auth, adminOnly, getContactConfig);

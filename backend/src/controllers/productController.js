@@ -239,7 +239,7 @@ exports.getPublishedProducts = async (req, res) => {
 // Get products by attribute value (for homepage categories)
 exports.getProductsByAttribute = async (req, res) => {
   try {
-    const { attributeId, value } = req.query;
+    const { attributeId, value, limit = 200 } = req.query;
     const filter = { status: 'published' };
 
     if (attributeId && value) {
@@ -254,7 +254,7 @@ exports.getProductsByAttribute = async (req, res) => {
     const products = await Product.find(filter)
       .select('name tagline logo tags developerName')
       .sort({ updatedAt: -1 })
-      .limit(20);
+      .limit(parseInt(limit));
 
     res.json({ products });
   } catch (error) {
@@ -266,8 +266,19 @@ exports.getProductsByAttribute = async (req, res) => {
 // Production-level search with multi-attribute filtering
 exports.searchProducts = async (req, res) => {
   try {
-    const { search, filters, page = 1, limit = 20 } = req.query;
+    const { search, filters, productIds, page = 1, limit = 20 } = req.query;
     const filter = { status: 'published' };
+
+    if (productIds) {
+      const ids = productIds
+        .toString()
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+      if (ids.length > 0) {
+        filter._id = { $in: ids };
+      }
+    }
 
     // Text search across multiple fields
     if (search && search.trim()) {
@@ -341,7 +352,7 @@ exports.searchProducts = async (req, res) => {
 // Dynamic filter facets — recalculates available values based on current filters
 exports.getFilterFacets = async (req, res) => {
   try {
-    const { search, filters } = req.query;
+    const { search, filters, productIds } = req.query;
 
     // Get all filterable attributes
     const filterableAttrs = await Attribute.find({ showForFiltering: true })
@@ -349,6 +360,16 @@ exports.getFilterFacets = async (req, res) => {
 
     // Build base filter (same logic as searchProducts but without attribute filters)
     const baseFilter = { status: 'published' };
+    if (productIds) {
+      const ids = productIds
+        .toString()
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean);
+      if (ids.length > 0) {
+        baseFilter._id = { $in: ids };
+      }
+    }
     if (search && search.trim()) {
       baseFilter.$or = [
         { name: { $regex: search, $options: 'i' } },

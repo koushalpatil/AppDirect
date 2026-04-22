@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { productAPI } from '../../services/api';
-import { ChevronDown, ChevronUp, Home, LayoutList, LayoutGrid, X, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, ChevronUp, Home, LayoutList, LayoutGrid, SlidersHorizontal } from 'lucide-react';
 import './Public.css';
 
 // Keys that are NOT filters (URL-level metadata params)
-const NON_FILTER_KEYS = new Set(['search', 'page', 'sort']);
+const NON_FILTER_KEYS = new Set(['search', 'page', 'sort', 'productIds']);
 
 export default function AllProducts() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -16,11 +16,14 @@ export default function AllProducts() {
   const [collapsedFilters, setCollapsedFilters] = useState({});
   const [viewMode, setViewMode] = useState('list');
   const [hideFilters, setHideFilters] = useState(false);
+  const [categoryProductsMap, setCategoryProductsMap] = useState({});
 
   // Derive these fresh from searchParams on every render
   const search = searchParams.get('search') || '';
-  const page = parseInt(searchParams.get('page') || '1');
   const sort = searchParams.get('sort') || 'relevance';
+  const selectedProductIds = (searchParams.get('productIds') || '')
+    .split(',')
+    .filter(Boolean);
 
   /** Parse attribute filters from URL — excludes meta keys */
   const getActiveFilters = useCallback(() => {
@@ -36,6 +39,9 @@ export default function AllProducts() {
 
   const activeFilters = getActiveFilters();
   const hasActiveFilters = Object.keys(activeFilters).length > 0;
+  const categoryFacet = facets.find((f) => (f.name || '').toLowerCase() === 'category');
+  const categoryAttrId = categoryFacet?._id?.toString();
+  const selectedCategories = categoryAttrId ? (activeFilters[categoryAttrId] || []) : [];
 
   // ── Data fetching ──────────────────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -44,6 +50,7 @@ export default function AllProducts() {
     const currentSearch = searchParams.get('search') || '';
     const currentPage = parseInt(searchParams.get('page') || '1');
     const currentSort = searchParams.get('sort') || 'relevance';
+    const currentProductIds = searchParams.get('productIds') || undefined;
     const filters = {};
     for (const [key, value] of searchParams.entries()) {
       if (!NON_FILTER_KEYS.has(key)) {
@@ -58,11 +65,12 @@ export default function AllProducts() {
         productAPI.search({
           search: currentSearch,
           filters: filtersParam,
+          productIds: currentProductIds,
           page: currentPage,
           limit: 24,
           sort: currentSort,
         }),
-        productAPI.getFacets({ search: currentSearch, filters: filtersParam }),
+        productAPI.getFacets({ search: currentSearch, filters: filtersParam, productIds: currentProductIds }),
       ]);
       setProducts(prodRes.data.products || []);
       setPagination(prodRes.data.pagination || { total: 0, page: 1, pages: 1 });
@@ -78,6 +86,65 @@ export default function AllProducts() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (!categoryAttrId || selectedCategories.length === 0) {
+      setCategoryProductsMap({});
+      return;
+    }
+
+    const loadCategoryProducts = async () => {
+      try {
+        const entries = await Promise.all(
+          selectedCategories.map(async (category) => {
+            const res = await productAPI.getByAttribute({
+              attributeId: categoryAttrId,
+              value: category,
+              limit: 200,
+            });
+            return [category, res.data.products || []];
+          })
+        );
+        setCategoryProductsMap(Object.fromEntries(entries));
+      } catch {
+        setCategoryProductsMap({});
+      }
+    };
+
+    loadCategoryProducts();
+  }, [categoryAttrId, selectedCategories.join('|')]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    const currentIds = (params.get('productIds') || '').split(',').filter(Boolean);
+
+    if (currentIds.length === 0) return;
+
+    if (selectedCategories.length === 0) {
+      params.delete('productIds');
+      setSearchParams(params);
+      return;
+    }
+
+    const allowedIds = new Set(
+      selectedCategories.flatMap((category) =>
+        (categoryProductsMap[category] || []).map((p) => p._id)
+      )
+    );
+
+    if (allowedIds.size === 0) return;
+
+    const pruned = currentIds.filter((id) => allowedIds.has(id));
+    if (pruned.length !== currentIds.length) {
+      if (pruned.length > 0) {
+        params.set('productIds', pruned.join(','));
+      } else {
+        params.delete('productIds');
+      }
+      params.set('page', '1');
+      setSearchParams(params);
+    }
+  }, [searchParams, selectedCategories.join('|'), categoryProductsMap, setSearchParams]);
 
   // ── Filter actions ─────────────────────────────────────────────────────────
   const toggleFilterValue = (attrId, value) => {
@@ -100,6 +167,20 @@ export default function AllProducts() {
   };
 
   const removeFilterChip = (attrId, value) => {
+    if (attrId === 'productId') {
+      const params = new URLSearchParams(searchParams);
+      const current = (params.get('productIds') || '').split(',').filter(Boolean);
+      const updated = current.filter((id) => id !== value);
+      if (updated.length > 0) {
+        params.set('productIds', updated.join(','));
+      } else {
+        params.delete('productIds');
+      }
+      params.set('page', '1');
+      setSearchParams(params);
+      return;
+    }
+
     const params = new URLSearchParams(searchParams);
     const current = params.get(attrId)?.split(',').filter(Boolean) || [];
     const updated = current.filter((v) => v !== value);
@@ -142,6 +223,25 @@ export default function AllProducts() {
     setCollapsedFilters((prev) => ({ ...prev, [attrId]: !prev[attrId] }));
   };
 
+  const toggleProductFilter = (productId) => {
+    const params = new URLSearchParams(searchParams);
+    const current = (params.get('productIds') || '').split(',').filter(Boolean);
+
+    if (current.includes(productId)) {
+      const updated = current.filter((id) => id !== productId);
+      if (updated.length > 0) {
+        params.set('productIds', updated.join(','));
+      } else {
+        params.delete('productIds');
+      }
+    } else {
+      params.set('productIds', [...current, productId].join(','));
+    }
+
+    params.set('page', '1');
+    setSearchParams(params);
+  };
+
   // ── Active filter chips ────────────────────────────────────────────────────
   // Build chip list from facets (so we have human-readable names)
   const activeChips = [];
@@ -156,6 +256,20 @@ export default function AllProducts() {
     for (const val of vals) {
       if (!activeChips.find((c) => c.attrId === attrId && c.value === val)) {
         activeChips.push({ attrId, attrName: attrId, value: val });
+      }
+    }
+  }
+
+  for (const category of selectedCategories) {
+    const list = categoryProductsMap[category] || [];
+    for (const product of list) {
+      if (selectedProductIds.includes(product._id)) {
+        activeChips.push({
+          attrId: 'productId',
+          attrName: 'Product',
+          value: product._id,
+          label: product.name,
+        });
       }
     }
   }
@@ -336,56 +450,6 @@ export default function AllProducts() {
           </div>
         </div>
 
-        {/* Active Filter Chips bar */}
-        {(activeChips.length > 0 || search) && (
-          <div
-            className="ap-active-filters"
-            style={{ marginBottom: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}
-          >
-            {search && (
-              <div className="ap-active-chip">
-                Search: &quot;{search}&quot;
-                <button
-                  onClick={() => {
-                    const params = new URLSearchParams(searchParams);
-                    params.delete('search');
-                    params.set('page', '1');
-                    setSearchParams(params);
-                  }}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            )}
-            {activeChips.map((chip) => (
-              <div key={`${chip.attrId}-${chip.value}`} className="ap-active-chip">
-                <span style={{ opacity: 0.7, marginRight: 2, fontSize: '11px' }}>{chip.attrName}:</span>
-                {chip.value}
-                <button onClick={() => removeFilterChip(chip.attrId, chip.value)}>
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-            {(hasActiveFilters || search) && (
-              <button
-                onClick={clearAllFilters}
-                style={{
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  color: '#6b7280',
-                  background: 'none',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  padding: '3px 10px',
-                }}
-              >
-                Clear all
-              </button>
-            )}
-          </div>
-        )}
-
         <div
           className="all-products-page"
           style={{ padding: 0, gap: '24px', alignItems: 'flex-start' }}
@@ -448,6 +512,7 @@ export default function AllProducts() {
 
               {facets.map((facet) => {
                 const selectedVals = activeFilters[facet._id] || [];
+                const isCategoryFacet = (facet.name || '').toLowerCase() === 'category';
                 return (
                   <div
                     key={facet._id}
@@ -490,33 +555,77 @@ export default function AllProducts() {
                           facet.options.map((opt) => {
                             const isSelected = selectedVals.includes(opt);
                             return (
-                              <label
-                                key={opt}
-                                className="ap-filter-option"
-                                style={{ padding: '3px 0', cursor: 'pointer' }}
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={isSelected}
-                                  onChange={() => toggleFilterValue(facet._id, opt)}
-                                  style={{
-                                    width: '16px',
-                                    height: '16px',
-                                    borderRadius: '4px',
-                                    accentColor: '#0183FF',
-                                    cursor: 'pointer',
-                                  }}
-                                />
-                                <span
-                                  style={{
-                                    fontSize: '13px',
-                                    color: isSelected ? '#0183FF' : '#374151',
-                                    fontWeight: isSelected ? '600' : '400',
-                                  }}
+                              <div key={opt}>
+                                <label
+                                  className="ap-filter-option"
+                                  style={{ padding: '3px 0', cursor: 'pointer' }}
                                 >
-                                  {opt}
-                                </span>
-                              </label>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleFilterValue(facet._id, opt)}
+                                    style={{
+                                      width: '16px',
+                                      height: '16px',
+                                      borderRadius: '4px',
+                                      accentColor: '#0183FF',
+                                      cursor: 'pointer',
+                                    }}
+                                  />
+                                  <span
+                                    style={{
+                                      fontSize: '13px',
+                                      color: isSelected ? '#0183FF' : '#374151',
+                                      fontWeight: isSelected ? '600' : '400',
+                                    }}
+                                  >
+                                    {opt}
+                                  </span>
+                                </label>
+
+                                {isCategoryFacet && isSelected && (
+                                  <div style={{ marginLeft: '26px', marginTop: '2px', marginBottom: '6px' }}>
+                                    {(categoryProductsMap[opt] || []).length > 0 ? (
+                                      (categoryProductsMap[opt] || []).map((product) => {
+                                        const checked = selectedProductIds.includes(product._id);
+                                        return (
+                                          <label
+                                            key={product._id}
+                                            className="ap-filter-option"
+                                            style={{ padding: '2px 0', cursor: 'pointer' }}
+                                          >
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              onChange={() => toggleProductFilter(product._id)}
+                                              style={{
+                                                width: '14px',
+                                                height: '14px',
+                                                borderRadius: '4px',
+                                                accentColor: '#111827',
+                                                cursor: 'pointer',
+                                              }}
+                                            />
+                                            <span
+                                              style={{
+                                                fontSize: '13px',
+                                                color: checked ? '#111827' : '#4b5563',
+                                                fontWeight: checked ? '600' : '400',
+                                              }}
+                                            >
+                                              {product.name}
+                                            </span>
+                                          </label>
+                                        );
+                                      })
+                                    ) : (
+                                      <span style={{ fontSize: 12, color: '#9ca3af', padding: '2px 0', display: 'block' }}>
+                                        No products in this category
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             );
                           })
                         ) : (

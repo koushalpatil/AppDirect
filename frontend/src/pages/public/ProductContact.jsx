@@ -1,74 +1,293 @@
-import { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import { productAPI } from '../../services/api';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { productAPI, configAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import { X } from 'lucide-react';
-import { Country, State } from 'country-state-city';
 import './Public.css'; // Will use pub-modal CSS classes for styling
+
+const isEmpty = (value) => value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
+
+const getInitialValue = (field) => {
+  if (field.defaultValue !== undefined && field.defaultValue !== null && field.defaultValue !== '') {
+    if (field.type === 'checkbox') {
+      return Array.isArray(field.defaultValue) ? field.defaultValue : [field.defaultValue];
+    }
+    return field.defaultValue;
+  }
+  if (field.type === 'checkbox') return [];
+  return '';
+};
+
+const isPublicExcludedField = (field) => {
+  const normalizedKey = String(field?.fieldName || '').replace(/_/g, '').toLowerCase();
+  return field?.type === 'file' || normalizedKey === 'companysize';
+};
 
 export default function ProductContact() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [product, setProduct] = useState(null);
+  const [fields, setFields] = useState([]);
+  const [formValues, setFormValues] = useState({});
+  const [errors, setErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  
-  const [form, setForm] = useState({
-    firstName: '', lastName: '', email: '', phone: '',
-    companyName: '', companySize: '', street: '', suite: '',
-    city: '', state: '', zipCode: '', country: 'US', notes: ''
-  });
-  
-  const [countries, setCountries] = useState([]);
-  const [states, setStates] = useState([]);
-  const [phoneCode, setPhoneCode] = useState('+1');
 
-  useEffect(() => {
-    loadProduct();
-    const allCountries = Country.getAllCountries();
-    setCountries(allCountries);
-    // Initialize standard US states
-    setStates(State.getStatesOfCountry('US'));
-  }, [id]);
-
-  const loadProduct = async () => {
+  const loadData = useCallback(async () => {
     try {
-      const res = await productAPI.getPublicOne(id);
-      setProduct(res.data.product);
+      const [productRes, formRes] = await Promise.all([
+        productAPI.getPublicOne(id),
+        configAPI.getPublicContactForm(),
+      ]);
+
+      const configuredFields = (formRes.data.fields || [])
+        .filter((field) => !isPublicExcludedField(field))
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      const initialValues = {};
+      configuredFields.forEach((field) => {
+        initialValues[field.fieldName] = getInitialValue(field);
+      });
+
+      setProduct(productRes.data.product);
+      setFields(configuredFields);
+      setFormValues(initialValues);
     } catch {
-      toast.error('Failed to load product');
+      toast.error('Failed to load form');
       navigate('/products');
     } finally {
       setLoading(false);
     }
+  }, [id, navigate]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const validateField = (field, rawValue) => {
+    const fieldLabel = field.label || field.fieldName;
+    const validations = field.validations || {};
+
+    if (field.required && isEmpty(rawValue)) {
+      return `${fieldLabel} is required`;
+    }
+    if (!field.required && isEmpty(rawValue)) {
+      return '';
+    }
+
+    if (field.type === 'checkbox') {
+      const selected = Array.isArray(rawValue) ? rawValue : [rawValue];
+      const allowed = new Set((field.options || []).map((o) => o.value));
+      const invalid = selected.find((value) => !allowed.has(value));
+      if (invalid) return `${fieldLabel} has invalid option selected`;
+      return '';
+    }
+
+    if (field.type === 'number') {
+      const num = Number(rawValue);
+      if (!Number.isFinite(num)) return `${fieldLabel} must be a number`;
+      if (validations.min !== undefined && num < validations.min) return `${fieldLabel} must be >= ${validations.min}`;
+      if (validations.max !== undefined && num > validations.max) return `${fieldLabel} must be <= ${validations.max}`;
+      return '';
+    }
+
+    if (field.type === 'select' || field.type === 'radio') {
+      const allowed = new Set((field.options || []).map((o) => o.value));
+      if (!allowed.has(String(rawValue))) return `${fieldLabel} has invalid selection`;
+      return '';
+    }
+
+    if (field.type === 'date') {
+      const dateVal = new Date(String(rawValue));
+      if (Number.isNaN(dateVal.getTime())) return `${fieldLabel} must be a valid date`;
+      if (validations.minDate && dateVal < new Date(validations.minDate)) return `${fieldLabel} should be on/after ${validations.minDate}`;
+      if (validations.maxDate && dateVal > new Date(validations.maxDate)) return `${fieldLabel} should be on/before ${validations.maxDate}`;
+      return '';
+    }
+
+    const value = String(rawValue).trim();
+    if (field.type === 'email') {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(value)) return `${fieldLabel} must be a valid email`;
+    }
+    if (validations.minLength !== undefined && value.length < validations.minLength) {
+      return `${fieldLabel} must be at least ${validations.minLength} characters`;
+    }
+    if (validations.maxLength !== undefined && value.length > validations.maxLength) {
+      return `${fieldLabel} must be at most ${validations.maxLength} characters`;
+    }
+    if (validations.regex) {
+      try {
+        const re = new RegExp(validations.regex);
+        if (!re.test(value)) return `${fieldLabel} format is invalid`;
+      } catch {
+        return `${fieldLabel} has invalid validation pattern`;
+      }
+    }
+    return '';
   };
 
-  const handleCountryChange = (e) => {
-    const countryCode = e.target.value;
-    const selectedCountry = countries.find(c => c.isoCode === countryCode);
-    setForm({ ...form, country: countryCode, state: '' });
-    setStates(State.getStatesOfCountry(countryCode));
-    setPhoneCode(selectedCountry ? `+${selectedCountry.phonecode}` : '');
+  const runValidation = () => {
+    const nextErrors = {};
+    fields.forEach((field) => {
+      const error = validateField(field, formValues[field.fieldName]);
+      if (error) nextErrors[field.fieldName] = error;
+    });
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const setFieldValue = (name, value) => {
+    setFormValues((prev) => ({ ...prev, [name]: value }));
+    setErrors((prev) => ({ ...prev, [name]: '' }));
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm(prev => ({ ...prev, [name]: value }));
+    setFieldValue(name, value);
   };
 
-  const handleSubmit = (e) => {
+  const handleCheckboxChange = (fieldName, optionValue) => {
+    setFormValues((prev) => {
+      const current = Array.isArray(prev[fieldName]) ? prev[fieldName] : [];
+      const next = current.includes(optionValue)
+        ? current.filter((x) => x !== optionValue)
+        : [...current, optionValue];
+      return { ...prev, [fieldName]: next };
+    });
+    setErrors((prev) => ({ ...prev, [fieldName]: '' }));
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    /* Validation simplified */
-    if (!form.email || !form.companyName || !form.companySize) {
-      return toast.error('Please fill required fields');
+    const valid = runValidation();
+    if (!valid) {
+      toast.error('Please fix the highlighted fields');
+      return;
     }
-    
-    // Simulate submission to backend API
-    const loadingToast = toast.loading('Submitting inquiry...');
-    setTimeout(() => {
-      toast.dismiss(loadingToast);
+
+    setSubmitting(true);
+    try {
+      await configAPI.submitPublicContactForm({
+        productId: id,
+        values: formValues,
+      });
       setIsSubmitted(true);
-    }, 1200);
+    } catch (err) {
+      const backendErrors = err?.response?.data?.errors;
+      if (backendErrors && typeof backendErrors === 'object') {
+        setErrors(backendErrors);
+      }
+      toast.error(err?.response?.data?.message || 'Failed to submit form');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const renderField = (field) => {
+    const value = formValues[field.fieldName];
+    const fieldError = errors[field.fieldName];
+    const validations = field.validations || {};
+
+    const commonProps = {
+      name: field.fieldName,
+      value: value ?? '',
+      onChange: handleChange,
+      placeholder: field.placeholder || '',
+      required: !!field.required,
+      className: 'pub-form-input',
+    };
+
+    return (
+      <div
+        key={field.fieldName}
+        className="pub-form-group"
+        style={{
+          marginBottom: 0,
+          gridColumn: ['textarea', 'checkbox', 'radio'].includes(field.type) ? '1 / -1' : 'auto',
+        }}
+      >
+        <label className="pub-form-label">
+          {field.label}
+          {field.required && <span className="required">*</span>}
+        </label>
+
+        {field.type === 'textarea' && (
+          <textarea
+            {...commonProps}
+            className="pub-form-textarea"
+            rows={5}
+            minLength={validations.minLength}
+            maxLength={validations.maxLength}
+          />
+        )}
+
+        {(field.type === 'text' || field.type === 'email' || field.type === 'number' || field.type === 'date' || field.type === 'tel') && (
+          <input
+            {...commonProps}
+            type={field.type === 'text' ? 'text' : field.type}
+            min={field.type === 'number' ? validations.min : undefined}
+            max={field.type === 'number' ? validations.max : undefined}
+            step={field.type === 'number' ? validations.step : undefined}
+            minLength={field.type === 'text' || field.type === 'tel' ? validations.minLength : undefined}
+            maxLength={field.type === 'text' || field.type === 'tel' ? validations.maxLength : undefined}
+            pattern={validations.regex || undefined}
+            min={field.type === 'date' ? validations.minDate : undefined}
+            max={field.type === 'date' ? validations.maxDate : undefined}
+          />
+        )}
+
+        {(field.type === 'select') && (
+          <select
+            name={field.fieldName}
+            className="pub-form-select"
+            value={value ?? ''}
+            onChange={handleChange}
+            required={!!field.required}
+          >
+            <option value="" disabled hidden>Select</option>
+            {(field.options || []).map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        )}
+
+        {field.type === 'radio' && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
+            {(field.options || []).map((opt) => (
+              <label key={opt.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="radio"
+                  name={field.fieldName}
+                  value={opt.value}
+                  checked={value === opt.value}
+                  onChange={handleChange}
+                />
+                <span>{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {field.type === 'checkbox' && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
+            {(field.options || []).map((opt) => (
+              <label key={opt.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={Array.isArray(value) && value.includes(opt.value)}
+                  onChange={() => handleCheckboxChange(field.fieldName, opt.value)}
+                />
+                <span>{opt.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
+        {fieldError && <small style={{ color: '#dc2626', display: 'block', marginTop: 4 }}>{fieldError}</small>}
+      </div>
+    );
   };
 
   if (loading) return <div className="pub-loader" style={{ minHeight: '60vh' }}><div className="pub-spinner" /></div>;
@@ -102,101 +321,11 @@ export default function ProductContact() {
         ) : (
           <form onSubmit={handleSubmit} style={{ padding: '32px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
-            
-            {/* Row 1 */}
-            <div className="pub-form-group" style={{ marginBottom: 0 }}>
-              <label className="pub-form-label">First Name</label>
-              <input type="text" name="firstName" className="pub-form-input" value={form.firstName} onChange={handleChange} />
-            </div>
-            <div className="pub-form-group" style={{ marginBottom: 0 }}>
-              <label className="pub-form-label">Last Name</label>
-              <input type="text" name="lastName" className="pub-form-input" value={form.lastName} onChange={handleChange} />
-            </div>
-
-            {/* Row 2 */}
-            <div className="pub-form-group" style={{ marginBottom: 0 }}>
-              <label className="pub-form-label">Email <span className="required">*</span></label>
-              <input type="email" name="email" className="pub-form-input" value={form.email} onChange={handleChange} required />
-            </div>
-            <div className="pub-form-group" style={{ marginBottom: 0 }}>
-              <label className="pub-form-label">Phone</label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input type="text" className="pub-form-input" value={phoneCode} disabled style={{ width: '60px', background: '#f1f5f9', textAlign: 'center' }} />
-                <input type="text" name="phone" className="pub-form-input" style={{ flex: 1 }} value={form.phone} onChange={handleChange} />
-              </div>
-            </div>
-
-            {/* Row 3 */}
-            <div className="pub-form-group" style={{ marginBottom: 0 }}>
-              <label className="pub-form-label">Company Name <span className="required">*</span></label>
-              <input type="text" name="companyName" className="pub-form-input" value={form.companyName} onChange={handleChange} required />
-            </div>
-            <div className="pub-form-group" style={{ marginBottom: 0 }}>
-              <label className="pub-form-label">Company Size <span className="required">*</span></label>
-              <select name="companySize" className="pub-form-select" value={form.companySize} onChange={handleChange} required>
-                <option value="">Select</option>
-                <option value="1-10">1-10</option>
-                <option value="11-50">11-50</option>
-                <option value="51-200">51-200</option>
-                <option value="201-500">201-500</option>
-                <option value="500+">500+</option>
-              </select>
-            </div>
-
-            {/* Row 4 */}
-            <div className="pub-form-group" style={{ marginBottom: 0 }}>
-              <label className="pub-form-label">Street</label>
-              <input type="text" name="street" className="pub-form-input" value={form.street} onChange={handleChange} />
-            </div>
-            <div className="pub-form-group" style={{ marginBottom: 0 }}>
-              <label className="pub-form-label">Suite</label>
-              <input type="text" name="suite" className="pub-form-input" value={form.suite} onChange={handleChange} />
-            </div>
-
-            {/* Row 5 */}
-            <div className="pub-form-group" style={{ marginBottom: 0 }}>
-              <label className="pub-form-label">City</label>
-              <input type="text" name="city" className="pub-form-input" value={form.city} onChange={handleChange} />
-            </div>
-            <div className="pub-form-group" style={{ marginBottom: 0, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-              <div>
-                <label className="pub-form-label">State</label>
-                <select name="state" className="pub-form-select" value={form.state} onChange={handleChange}>
-                  <option value="">Select</option>
-                  {states.map(s => <option key={s.isoCode} value={s.isoCode}>{s.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="pub-form-label">Zip Code</label>
-                <input type="text" name="zipCode" className="pub-form-input" value={form.zipCode} onChange={handleChange} />
-              </div>
-            </div>
-
-            {/* Row 6 */}
-            <div className="pub-form-group" style={{ marginBottom: 0, gridColumn: '1 / 2' }}>
-              <label className="pub-form-label">Country</label>
-              <select name="country" className="pub-form-select" value={form.country} onChange={handleCountryChange}>
-                {countries.map(c => <option key={c.isoCode} value={c.isoCode}>{c.name}</option>)}
-              </select>
-            </div>
-
-            {/* Row 7 */}
-            <div className="pub-form-group" style={{ gridColumn: '1 / -1', marginBottom: 0, marginTop: '8px' }}>
-              <label className="pub-form-label">Notes</label>
-              <textarea 
-                name="notes" 
-                className="pub-form-textarea" 
-                style={{ height: '120px', resize: 'vertical' }}
-                placeholder="Please specify any details" 
-                value={form.notes} 
-                onChange={handleChange} 
-              />
-              <div style={{ textAlign: 'right', fontSize: '11px', color: '#64748b', marginTop: '4px' }}>400</div>
-            </div>
+            {fields.map((field) => renderField(field))}
           </div>
           
-          <button type="submit" style={{ background: '#0f172a', color: '#fff', padding: '10px 32px', border: 'none', borderRadius: '4px', fontWeight: '600', cursor: 'pointer', fontSize: '14px' }}>
-            Send
+          <button type="submit" disabled={submitting} style={{ background: '#0f172a', color: '#fff', padding: '10px 32px', border: 'none', borderRadius: '4px', fontWeight: '600', cursor: submitting ? 'not-allowed' : 'pointer', fontSize: '14px', opacity: submitting ? 0.7 : 1 }}>
+            {submitting ? 'Submitting...' : 'Send'}
           </button>
         </form>
         )}
