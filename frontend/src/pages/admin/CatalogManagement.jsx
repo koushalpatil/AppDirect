@@ -17,6 +17,7 @@ export default function CatalogManagement() {
     requiredInProductEditor: false,
     showForFiltering: false,
     options: [],
+    similarity: { useInSimilarity: false, weight: 1, matchType: 'exact' },
   });
 
   useEffect(() => { loadAttributes(); }, []);
@@ -33,7 +34,14 @@ export default function CatalogManagement() {
   };
 
   const resetForm = () => {
-    setForm({ name: '', description: '', displayOnHomepage: false, requiredInProductEditor: false, showForFiltering: false, options: [] });
+    setForm({
+      name: '', description: '',
+      displayOnHomepage: false,
+      requiredInProductEditor: false,
+      showForFiltering: false,
+      options: [],
+      similarity: { useInSimilarity: false, weight: 1, matchType: 'exact' },
+    });
     setEditing(null);
     setOptionInput('');
   };
@@ -48,6 +56,7 @@ export default function CatalogManagement() {
       requiredInProductEditor: attr.requiredInProductEditor,
       showForFiltering: attr.showForFiltering,
       options: attr.options || [],
+      similarity: attr.similarity || { useInSimilarity: false, weight: 1, matchType: 'exact' },
     });
     setEditing(attr._id);
     setModalOpen(true);
@@ -67,6 +76,16 @@ export default function CatalogManagement() {
 
   const handleSave = async () => {
     if (!form.name.trim()) return toast.error('Attribute name is required');
+    
+    if (form.similarity.useInSimilarity) {
+      if (form.similarity.weight === '' || isNaN(form.similarity.weight)) {
+        return toast.error('Similarity weight is required');
+      }
+      if (form.similarity.weight < 0 || form.similarity.weight > 10) {
+        return toast.error('Similarity weight must be between 0 and 10');
+      }
+    }
+
     try {
       if (editing) {
         await catalogAPI.update(editing, form);
@@ -79,7 +98,8 @@ export default function CatalogManagement() {
       resetForm();
       loadAttributes();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to save');
+      const msg = err.response?.data?.message || 'Failed to save';
+      toast.error(msg);
     }
   };
 
@@ -153,9 +173,7 @@ export default function CatalogManagement() {
                   <td>
                     <div className="flex gap-xs">
                       <button className="btn btn-icon btn-ghost" onClick={() => openEdit(attr)} title="Edit"><Edit3 size={14} /></button>
-                      {attr.name.toLowerCase() !== 'category' && (
-                        <button className="btn btn-icon btn-ghost" onClick={() => handleDelete(attr._id, attr.name)} title="Delete"><Trash2 size={14} /></button>
-                      )}
+                      <button className="btn btn-icon btn-ghost" onClick={() => handleDelete(attr._id, attr.name)} title="Delete"><Trash2 size={14} /></button>
                     </div>
                   </td>
                 </tr>
@@ -194,6 +212,48 @@ export default function CatalogManagement() {
               <div className="toggle-wrapper">
                 <span className="toggle-label">Show for filtering option</span>
                 <label className="toggle"><input type="checkbox" checked={form.showForFiltering} onChange={(e) => setForm(prev => ({ ...prev, showForFiltering: e.target.checked }))} /><span className="toggle-slider" /></label>
+              </div>
+
+              <div style={{ padding: '16px', background: 'var(--bg-secondary)', borderRadius: '8px', marginTop: '20px' }}>
+                <h4 style={{ fontSize: '14px', marginBottom: '12px', fontWeight: 600 }}>Similarity Configuration</h4>
+                <div className="toggle-wrapper" style={{ border: 'none', padding: 0, marginBottom: '12px' }}>
+                  <span className="toggle-label">Use in product similarity engine</span>
+                  <label className="toggle"><input type="checkbox" checked={form.similarity.useInSimilarity} onChange={(e) => setForm(prev => ({ ...prev, similarity: { ...prev.similarity, useInSimilarity: e.target.checked } }))} /><span className="toggle-slider" /></label>
+                </div>
+                
+                {form.similarity.useInSimilarity && (
+                  <div className="grid-2 mt-sm">
+                    <div className="form-group mb-0">
+                      <label className="form-label">Weight (0-10)</label>
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        min="0" 
+                        max="10" 
+                        step="0.5" 
+                        value={form.similarity.weight === '' ? '' : form.similarity.weight} 
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setForm(prev => ({ 
+                            ...prev, 
+                            similarity: { 
+                              ...prev.similarity, 
+                              weight: val === '' ? '' : Number(val) 
+                            } 
+                          }));
+                        }} 
+                      />
+                    </div>
+                    <div className="form-group mb-0">
+                      <label className="form-label">Match Type</label>
+                      <select className="form-select" value={form.similarity.matchType} onChange={(e) => setForm(prev => ({ ...prev, similarity: { ...prev.similarity, matchType: e.target.value } }))}>
+                        <option value="exact">Exact Match</option>
+                        <option value="overlap">Overlap (at least one)</option>
+                        <option value="partial">Partial Match</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="form-group mt-md">

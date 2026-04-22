@@ -453,99 +453,101 @@ exports.getPublicProduct = async (req, res) => {
       return res.status(404).json({ message: 'Product not found.' });
     }
 
-    // Find similar products - Enhanced Rank & Filter Logic
-    // Minimum Rule: Get published products (excluding current)
+    // --- DYNAMIC SIMILARITY ENGINE ---
+    // 1. Get global similarity settings
+    const ContentConfig = require('../models/ContentConfig');
+    const similarityConfig = await ContentConfig.findOne({ type: 'similarity_settings' }) || {
+      minSimilarityScore: 0.2,
+      maxResults: 5,
+    };
+
+    // 2. Get attributes configured for similarity
+    const similarityAttributes = await Attribute.find({ 'similarity.useInSimilarity': true });
+    
+    // 3. Get all published products (excluding current)
     const allPublished = await Product.find({ _id: { $ne: product._id }, status: 'published' })
-      .populate('attributes.attributeId', 'name')
+      .populate('attributes.attributeId', 'name similarity')
       .lean();
 
-    // Determine current product's Category and all other generic Attributes explicitly
-    let currentCategoryValues = [];
-    let otherAttributesMap = {}; // mapping attrName -> values
-
-    for (const attr of product.attributes || []) {
-      const attrName = attr.attributeId?.name || '';
-      if (!attrName) continue;
-      if (attrName === 'Category') {
-        currentCategoryValues = attr.values || [];
-      } else {
-        otherAttributesMap[attrName] = attr.values || [];
-      }
-    }
-    const currentTags = product.tags || [];
-
-    // Scoring System
-    const scoredProducts = allPublished.map(p => {
-      let score = 0;
-      let pCategoryValues = [];
-      let pOtherAttributesMap = {};
-
-      for (const attr of p.attributes || []) {
-        const attrName = attr.attributeId?.name || '';
-        if (!attrName) continue;
-        if (attrName === 'Category') {
-          pCategoryValues = attr.values || [];
-        } else {
-          pOtherAttributesMap[attrName] = attr.values || [];
-        }
-      }
-
-      // Hard Rule Check (Minimum Rule)
-      const hasSameCategory = currentCategoryValues.length > 0 
-        ? pCategoryValues.some(c => currentCategoryValues.includes(c))
-        : false;
-
-      // Score: Category Match
-      if (hasSameCategory) score += 50;
-
-      // Score: Tags Overlap Match
-      const pTags = p.tags || [];
-      let commonTags = 0;
-      for (const t of pTags) {
-         if (currentTags.includes(t)) commonTags++;
-      }
-      if (commonTags > 0) score += (10 * commonTags);
-
-      // Score: Any Generic Attribute Overlap (Looping through custom attributes dynamically instead of hardcoding 'Geography')
-      for (const [attrName, targetValues] of Object.entries(otherAttributesMap)) {
-        if (targetValues.length > 0 && pOtherAttributesMap[attrName]) {
-          const overlap = pOtherAttributesMap[attrName].some(v => targetValues.includes(v));
-          // Provide incremental boosts for any matching attribute points!
-          if (overlap) score += 15;
-        }
-      }
-
-      // Score: Same Developer
-      if (p.developerName && p.developerName === product.developerName) {
-        score += 10;
-      }
-
-      return { product: p, score, hasSameCategory };
+    // 4. Map target product attributes for easy lookup
+    const targetAttrMap = {};
+    (product.attributes || []).forEach(attr => {
+      const attrId = attr.attributeId?._id?.toString() || attr.attributeId?.toString();
+      if (attrId) targetAttrMap[attrId] = attr.values || [];
     });
 
-    // Step-wise fallback filtering strategy:
-    // 1. Same category AND tags overlap
-    let filtered = scoredProducts.filter(sp => sp.hasSameCategory && sp.product.tags?.some(t => currentTags.includes(t)));
-    
-    // 2. Fallback: Same category only
-    if (filtered.length < 3) {
-      filtered = scoredProducts.filter(sp => sp.hasSameCategory);
-    }
-    
-    // 3. Fallback: Anything matching (sorted strictly by score)
-    if (filtered.length < 3) {
-      filtered = scoredProducts; // All others, will be pushed down by score sorting
+    // 5. Scoring Loop
+    const scoredProducts = allPublished.map(p => {
+      let score = 0;
+      let totalPossibleWeight = 0;
+
+      similarityAttributes.forEach(attr => {
+        const attrId = attr._id.toString();
+        const targetValues = targetAttrMap[attrId] || [];
+        const pAttr = (p.attributes || []).find(a => (a.attributeId?._id?.toString() || a.attributeId?.toString()) === attrId);
+        const pValues = pAttr ? (pAttr.values || []) : [];
+        
+        const weight = attr.similarity?.weight || 1;
+        totalPossibleWeight += weight;
+
+        if (targetValues.length > 0 && pValues.length > 0) {
+          const matchType = attr.similarity?.matchType || 'exact';
+          let matched = false;
+
+          if (matchType === 'exact') {
+            // Arrays are same or target is subset
+            matched = targetValues.length === pValues.length && targetValues.every(v => pValues.includes(v));
+          } else if (matchType === 'overlap') {
+            matched = targetValues.some(v => pValues.includes(v));
+          } else if (matchType === 'partial') {
+            matched = targetValues.some(v1 => pValues.some(v2 => 
+              v1.toLowerCase().includes(v2.toLowerCase()) || v2.toLowerCase().includes(v1.toLowerCase())
+            ));
+          }
+
+          if (matched) {
+            score += weight;
+          }
+        }
+      });
+
+      // Normalize score (0 to 1)
+      const normalizedScore = totalPossibleWeight > 0 ? score / totalPossibleWeight : 0;
+      
+      // Fallback check: does it match the fallback attribute?
+      let isFallbackMatch = false;
+      if (similarityConfig.fallbackAttributeId) {
+        const fallId = similarityConfig.fallbackAttributeId.toString();
+        const targetFallValues = targetAttrMap[fallId] || [];
+        const pFallAttr = (p.attributes || []).find(a => (a.attributeId?._id?.toString() || a.attributeId?.toString()) === fallId);
+        const pFallValues = pFallAttr ? (pFallAttr.values || []) : [];
+        isFallbackMatch = targetFallValues.length > 0 && pFallValues.some(v => targetFallValues.includes(v));
+      }
+
+      return { product: p, score: normalizedScore, isFallbackMatch };
+    });
+
+    // 6. Filtering & Ranking
+    // Threshold filtering
+    let filtered = scoredProducts.filter(sp => sp.score >= (similarityConfig.minSimilarityScore || 0.2));
+
+    // Fallback logic if results are low
+    const maxRes = similarityConfig.maxResults || 5;
+    if (filtered.length < maxRes && similarityConfig.fallbackAttributeId) {
+      const fallbackResults = scoredProducts
+        .filter(sp => sp.isFallbackMatch && !filtered.find(f => f.product._id.toString() === sp.product._id.toString()))
+        .sort((a, b) => b.score - a.score);
+      
+      filtered = [...filtered, ...fallbackResults];
     }
 
-    // Sort by Score DESC, then fallback to newest (Popularity pseudo-proxy)
+    // Final Sort: Score DESC, then newest
     filtered.sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
-      // Date fallback
       return new Date(b.product.createdAt) - new Date(a.product.createdAt);
     });
 
-    // Map strictly 3 limits
-    const similarProducts = filtered.slice(0, 3).map(sp => sp.product);
+    const similarProducts = filtered.slice(0, maxRes).map(sp => sp.product);
 
     res.json({ product, similarProducts });
   } catch (error) {

@@ -4,7 +4,7 @@ const Product = require('../models/Product');
 // Create a new attribute
 exports.createAttribute = async (req, res) => {
   try {
-    const { name, description, displayOnHomepage, requiredInProductEditor, showForFiltering, options } = req.body;
+    const { name, description, displayOnHomepage, requiredInProductEditor, showForFiltering, options, similarity } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ message: 'Attribute name is required.' });
@@ -15,6 +15,13 @@ exports.createAttribute = async (req, res) => {
       return res.status(409).json({ message: 'An attribute with this name already exists.' });
     }
 
+    if (similarity && similarity.weight !== undefined) {
+      const w = Number(similarity.weight);
+      if (isNaN(w) || w < 0 || w > 10) {
+        return res.status(400).json({ message: 'Similarity weight must be between 0 and 10.' });
+      }
+    }
+
     const attribute = await Attribute.create({
       name: name.trim(),
       description,
@@ -22,6 +29,11 @@ exports.createAttribute = async (req, res) => {
       requiredInProductEditor: requiredInProductEditor || false,
       showForFiltering: showForFiltering || false,
       options: options || [],
+      similarity: similarity || {
+        useInSimilarity: false,
+        weight: 1,
+        matchType: 'exact',
+      },
     });
 
     res.status(201).json({ message: 'Attribute created successfully.', attribute });
@@ -73,7 +85,7 @@ exports.getAttribute = async (req, res) => {
 // Update an attribute
 exports.updateAttribute = async (req, res) => {
   try {
-    const { name, description, displayOnHomepage, requiredInProductEditor, showForFiltering, options } = req.body;
+    const { name, description, displayOnHomepage, requiredInProductEditor, showForFiltering, options, similarity } = req.body;
 
     const attribute = await Attribute.findById(req.params.id);
     if (!attribute) {
@@ -95,6 +107,18 @@ exports.updateAttribute = async (req, res) => {
     if (requiredInProductEditor !== undefined) attribute.requiredInProductEditor = requiredInProductEditor;
     if (showForFiltering !== undefined) attribute.showForFiltering = showForFiltering;
     if (options !== undefined) attribute.options = options;
+    if (similarity !== undefined) {
+      if (similarity.weight !== undefined) {
+        const w = Number(similarity.weight);
+        if (isNaN(w) || w < 0 || w > 10) {
+          return res.status(400).json({ message: 'Similarity weight must be between 0 and 10.' });
+        }
+      }
+      attribute.similarity = {
+        ...attribute.similarity,
+        ...similarity,
+      };
+    }
 
     await attribute.save();
     res.json({ message: 'Attribute updated successfully.', attribute });

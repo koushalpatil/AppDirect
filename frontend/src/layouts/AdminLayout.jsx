@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
-  LayoutDashboard, Package, FolderTree, FileText, Settings, LogOut, Home, ChevronRight
+  LayoutDashboard, Package, FolderTree, FileText, Settings, LogOut, Home, ChevronRight, Zap
 } from 'lucide-react';
 import './AdminLayout.css';
 
@@ -20,6 +20,7 @@ export default function AdminLayout() {
     { to: '/admin/catalog', icon: FolderTree, label: 'Catalog' },
     { to: '/admin/config/contact', icon: FileText, label: 'Contact Form' },
     { to: '/admin/config/homepage', icon: Settings, label: 'Homepage Config' },
+    { to: '/admin/config/similarity', icon: Zap, label: 'Similarity Settings' },
   ];
 
   return (

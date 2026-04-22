@@ -13,6 +13,15 @@ const attributeSchema = new mongoose.Schema({
   showForFiltering: { type: Boolean, default: false },
   options: [{ type: String, trim: true }],
   linkedProductsCount: { type: Number, default: 0 },
+  similarity: {
+    useInSimilarity: { type: Boolean, default: false },
+    weight: { type: Number, default: 1, min: 0, max: 10 },
+    matchType: {
+      type: String,
+      enum: ['exact', 'overlap', 'partial'],
+      default: 'exact',
+    },
+  },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Attribute', attributeSchema);
