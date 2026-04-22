@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productAPI, catalogAPI, uploadAPI } from '../../services/api';
 import toast from 'react-hot-toast';
-import { Check, Plus, Trash2, Upload, Image, AlertCircle } from 'lucide-react';
+import { Check, Plus, Trash2, Upload, Image, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import './Admin.css';
 import {
   validateLogoFile,
@@ -16,7 +16,7 @@ import {
   RESOURCE_MAX_SIZE_MB,
 } from '../../utils/productValidation';
 
-const STEPS = ['Define Product', 'Listing Information', 'Product Information'];
+const STEPS = ['Define Product', 'Define Tabs', 'Define Attributes'];
 
 // Character counter helper
 function CharCount({ value, max, warn = 0.85 }) {
@@ -55,15 +55,16 @@ export default function ProductCreate() {
     tags: [],
     overview: [{ title: '', description: '', screenshots: [] }],
     features: [{ title: '', description: '', screenshots: [] }],
+    customTabs: [],
     attributes: [],
-    supportDescription: '',
-    policies: '',
     resources: [],
   });
 
   const [tagInput, setTagInput] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [uploadingScreenshots, setUploadingScreenshots] = useState({});
+  const [collapsedTabs, setCollapsedTabs] = useState({});
+  const [collapsedFeatures, setCollapsedFeatures] = useState({});
 
   useEffect(() => { loadAttributes(); }, []);
 
@@ -78,7 +79,6 @@ export default function ProductCreate() {
 
   const update = (field, val) => {
     setForm(prev => ({ ...prev, [field]: val }));
-    // Clear field error on change
     setFieldErrors(prev => ({ ...prev, [field]: null }));
   };
 
@@ -193,6 +193,111 @@ export default function ProductCreate() {
     }
   };
 
+  // ── Custom tab screenshot upload ─────────────────────────────────────────
+  const handleCustomTabScreenshots = async (tabIdx, elIdx, e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+
+    const currentCount = form.customTabs[tabIdx].elements[elIdx].screenshots.length;
+    if (currentCount >= SCREENSHOT_MAX_PER_SECTION) {
+      toast.error(`Maximum ${SCREENSHOT_MAX_PER_SECTION} screenshots per element.`);
+      return;
+    }
+    const available = SCREENSHOT_MAX_PER_SECTION - currentCount;
+    const toUpload = files.slice(0, available);
+    if (files.length > available) {
+      toast(`Only ${available} more screenshot(s) can be added.`, { icon: '⚠️' });
+    }
+
+    for (const file of toUpload) {
+      const check = validateScreenshotFile(file);
+      if (!check.ok) {
+        toast.error(`${file.name}: ${check.error}`);
+        return;
+      }
+    }
+
+    const key = `custom-${tabIdx}-${elIdx}`;
+    setUploadingScreenshots(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await uploadAPI.multiple(toUpload);
+      const urls = res.data.files.map(f => f.url);
+      const tabs = [...form.customTabs];
+      const els = [...tabs[tabIdx].elements];
+      els[elIdx] = { ...els[elIdx], screenshots: [...els[elIdx].screenshots, ...urls] };
+      tabs[tabIdx] = { ...tabs[tabIdx], elements: els };
+      update('customTabs', tabs);
+      toast.success(`${urls.length} screenshot(s) uploaded`);
+    } catch {
+      toast.error('Screenshot upload failed.');
+    } finally {
+      setUploadingScreenshots(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const removeCustomTabScreenshot = (tabIdx, elIdx, ssIdx) => {
+    const tabs = [...form.customTabs];
+    const els = [...tabs[tabIdx].elements];
+    els[elIdx] = {
+      ...els[elIdx],
+      screenshots: els[elIdx].screenshots.filter((_, i) => i !== ssIdx),
+    };
+    tabs[tabIdx] = { ...tabs[tabIdx], elements: els };
+    update('customTabs', tabs);
+  };
+
+  // ── Custom tab management ──────────────────────────────────────────────────
+  const addCustomTab = () => {
+    if (form.customTabs.length >= LIMITS.maxCustomTabs) {
+      toast.error(`Maximum ${LIMITS.maxCustomTabs} custom tabs allowed.`);
+      return;
+    }
+    update('customTabs', [...form.customTabs, { tabName: '', elements: [{ title: '', description: '', screenshots: [] }] }]);
+  };
+
+  const removeCustomTab = (tabIdx) => {
+    update('customTabs', form.customTabs.filter((_, i) => i !== tabIdx));
+  };
+
+  const updateCustomTabName = (tabIdx, name) => {
+    const tabs = [...form.customTabs];
+    tabs[tabIdx] = { ...tabs[tabIdx], tabName: name };
+    update('customTabs', tabs);
+  };
+
+  const addCustomTabElement = (tabIdx) => {
+    const tab = form.customTabs[tabIdx];
+    if (tab.elements.length >= LIMITS.maxCustomTabElements) {
+      toast.error(`Maximum ${LIMITS.maxCustomTabElements} elements per tab.`);
+      return;
+    }
+    const tabs = [...form.customTabs];
+    tabs[tabIdx] = { ...tabs[tabIdx], elements: [...tabs[tabIdx].elements, { title: '', description: '', screenshots: [] }] };
+    update('customTabs', tabs);
+  };
+
+  const removeCustomTabElement = (tabIdx, elIdx) => {
+    const tabs = [...form.customTabs];
+    tabs[tabIdx] = {
+      ...tabs[tabIdx],
+      elements: tabs[tabIdx].elements.filter((_, i) => i !== elIdx),
+    };
+    update('customTabs', tabs);
+  };
+
+  const updateCustomTabElement = (tabIdx, elIdx, key, val) => {
+    const tabs = [...form.customTabs];
+    const els = [...tabs[tabIdx].elements];
+    els[elIdx] = { ...els[elIdx], [key]: val };
+    tabs[tabIdx] = { ...tabs[tabIdx], elements: els };
+    update('customTabs', tabs);
+  };
+
+  const toggleTabCollapse = (tabIdx) => {
+    setCollapsedTabs(prev => ({ ...prev, [tabIdx]: !prev[tabIdx] }));
+  };
+
   // ── Resource upload with validation ────────────────────────────────────────
   const handleResourceUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -238,6 +343,15 @@ export default function ProductCreate() {
       if (name.length < LIMITS.name.min) { toast.error(`Name must be at least ${LIMITS.name.min} characters`); return false; }
       if (name.length > LIMITS.name.max) { toast.error(`Name must be under ${LIMITS.name.max} characters`); return false; }
     }
+    if (step === 1) {
+      // Validate custom tabs
+      for (let i = 0; i < form.customTabs.length; i++) {
+        const tab = form.customTabs[i];
+        const tn = (tab.tabName || '').trim();
+        if (!tn) { toast.error(`Custom tab #${i + 1} name is required`); return false; }
+        if (tn.length < LIMITS.customTabName.min) { toast.error(`Custom tab #${i + 1} name must be at least ${LIMITS.customTabName.min} characters`); return false; }
+      }
+    }
     return true;
   };
 
@@ -276,81 +390,176 @@ export default function ProductCreate() {
     <div className="wizard-section">
       <h3 className="wizard-section-title">{label}</h3>
       {form[field].map((item, idx) => (
-        <div key={idx} className="repeater-item">
-          {form[field].length > 1 && field === 'features' && (
-            <button
-              className="btn btn-icon btn-ghost repeater-remove"
-              onClick={() => removeRepeaterItem(field, idx)}
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
-          <div className="form-group">
-            <label className="form-label">
-              Title
-              <CharCount value={item.title} max={LIMITS[`${field.slice(0,-1)}Title`]?.max || 100} />
-            </label>
-            <input
-              type="text"
-              className="form-input"
-              maxLength={100}
-              value={item.title}
-              onChange={(e) => updateRepeater(field, idx, 'title', e.target.value)}
-              placeholder={`${label} title`}
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">
-              Description
-              <CharCount value={item.description} max={5000} warn={0.9} />
-            </label>
-            <textarea
-              className="form-textarea"
-              maxLength={5000}
-              value={item.description}
-              onChange={(e) => updateRepeater(field, idx, 'description', e.target.value)}
-              placeholder={`${label} description`}
-            />
-          </div>
-          <div className="form-group">
-            <label className="form-label">
-              Screenshots
-              <span style={{ fontSize: 11, color: '#9ca3af', float: 'right' }}>
-                {item.screenshots.length}/{SCREENSHOT_MAX_PER_SECTION} · Max 5MB each · JPEG/PNG/WebP/GIF
-              </span>
-            </label>
-            <div className="screenshots-grid">
-              {item.screenshots.map((ss, ssIdx) => (
-                <div key={ssIdx} style={{ position: 'relative' }}>
-                  <img src={ss} alt="" className="screenshot-thumb" />
+        <div key={idx} className="repeater-item" style={{ paddingTop: field === 'features' ? 'var(--space-md)' : undefined }}>
+          {field === 'features' ? (
+            <>
+              {/* Collapsible header for features */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsedFeatures[idx] ? 0 : 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
                   <button
-                    className="sliding-image-remove"
-                    onClick={() => removeScreenshot(field, idx, ssIdx)}
+                    type="button"
+                    className="btn btn-icon btn-ghost"
+                    onClick={() => setCollapsedFeatures(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                    title={collapsedFeatures[idx] ? 'Expand' : 'Collapse'}
                   >
-                    &times;
+                    {collapsedFeatures[idx] ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
                   </button>
+                  <span style={{ fontWeight: 600, fontSize: 14 }}>
+                    Feature {idx + 1}{item.title ? `: ${item.title}` : ''}
+                  </span>
                 </div>
-              ))}
-              {item.screenshots.length < SCREENSHOT_MAX_PER_SECTION && (
-                uploadingScreenshots[`${field}-${idx}`] ? (
-                  <div className="screenshot-upload-btn" style={{ cursor: 'default' }}>
-                    <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
-                  </div>
-                ) : (
-                  <label className="screenshot-upload-btn" title="Add screenshots">
-                    <Image size={16} />
+                {form[field].length > 1 && (
+                  <button
+                    className="btn btn-icon btn-ghost"
+                    onClick={() => removeRepeaterItem(field, idx)}
+                    style={{ color: '#ef4444' }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+              {!collapsedFeatures[idx] && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">
+                      Title
+                      <CharCount value={item.title} max={LIMITS[`${field.slice(0,-1)}Title`]?.max || 100} />
+                    </label>
                     <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      multiple
-                      onChange={(e) => handleMultipleFileUpload(field, idx, e)}
-                      style={{ display: 'none' }}
+                      type="text"
+                      className="form-input"
+                      maxLength={100}
+                      value={item.title}
+                      onChange={(e) => updateRepeater(field, idx, 'title', e.target.value)}
+                      placeholder={`${label} title`}
                     />
-                  </label>
-                )
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">
+                      Description
+                      <CharCount value={item.description} max={5000} warn={0.9} />
+                    </label>
+                    <textarea
+                      className="form-textarea"
+                      maxLength={5000}
+                      value={item.description}
+                      onChange={(e) => updateRepeater(field, idx, 'description', e.target.value)}
+                      placeholder={`${label} description`}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">
+                      Screenshots
+                      <span style={{ fontSize: 11, color: '#9ca3af', float: 'right' }}>
+                        {item.screenshots.length}/{SCREENSHOT_MAX_PER_SECTION} · Max 5MB each · JPEG/PNG/WebP/GIF
+                      </span>
+                    </label>
+                    <div className="screenshots-grid">
+                      {item.screenshots.map((ss, ssIdx) => (
+                        <div key={ssIdx} style={{ position: 'relative' }}>
+                          <img src={ss} alt="" className="screenshot-thumb" />
+                          <button
+                            className="sliding-image-remove"
+                            onClick={() => removeScreenshot(field, idx, ssIdx)}
+                          >
+                            &times;
+                          </button>
+                        </div>
+                      ))}
+                      {item.screenshots.length < SCREENSHOT_MAX_PER_SECTION && (
+                        uploadingScreenshots[`${field}-${idx}`] ? (
+                          <div className="screenshot-upload-btn" style={{ cursor: 'default' }}>
+                            <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+                          </div>
+                        ) : (
+                          <label className="screenshot-upload-btn" title="Add screenshots">
+                            <Image size={16} />
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,image/gif"
+                              multiple
+                              onChange={(e) => handleMultipleFileUpload(field, idx, e)}
+                              style={{ display: 'none' }}
+                            />
+                          </label>
+                        )
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
-            </div>
-          </div>
+            </>
+          ) : (
+            <>
+              {/* Non-collapsible: overview */}
+              <div className="form-group">
+                <label className="form-label">
+                  Title
+                  <CharCount value={item.title} max={LIMITS[`${field.slice(0,-1)}Title`]?.max || 100} />
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  maxLength={100}
+                  value={item.title}
+                  onChange={(e) => updateRepeater(field, idx, 'title', e.target.value)}
+                  placeholder={`${label} title`}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">
+                  Description
+                  <CharCount value={item.description} max={5000} warn={0.9} />
+                </label>
+                <textarea
+                  className="form-textarea"
+                  maxLength={5000}
+                  value={item.description}
+                  onChange={(e) => updateRepeater(field, idx, 'description', e.target.value)}
+                  placeholder={`${label} description`}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">
+                  Screenshots
+                  <span style={{ fontSize: 11, color: '#9ca3af', float: 'right' }}>
+                    {item.screenshots.length}/{SCREENSHOT_MAX_PER_SECTION} · Max 5MB each · JPEG/PNG/WebP/GIF
+                  </span>
+                </label>
+                <div className="screenshots-grid">
+                  {item.screenshots.map((ss, ssIdx) => (
+                    <div key={ssIdx} style={{ position: 'relative' }}>
+                      <img src={ss} alt="" className="screenshot-thumb" />
+                      <button
+                        className="sliding-image-remove"
+                        onClick={() => removeScreenshot(field, idx, ssIdx)}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                  {item.screenshots.length < SCREENSHOT_MAX_PER_SECTION && (
+                    uploadingScreenshots[`${field}-${idx}`] ? (
+                      <div className="screenshot-upload-btn" style={{ cursor: 'default' }}>
+                        <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+                      </div>
+                    ) : (
+                      <label className="screenshot-upload-btn" title="Add screenshots">
+                        <Image size={16} />
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          multiple
+                          onChange={(e) => handleMultipleFileUpload(field, idx, e)}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    )
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       ))}
       {field === 'features' && (
@@ -390,6 +599,8 @@ export default function ProductCreate() {
         <div className="wizard-content card card-body">
           <div className="wizard-section">
             <h3 className="wizard-section-title">Define Your Product</h3>
+
+            {/* Product Name */}
             <div className="form-group">
               <label className="form-label">
                 Product Name <span className="required">*</span>
@@ -409,51 +620,27 @@ export default function ProductCreate() {
                 Required · 2–{LIMITS.name.max} characters
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* ── Step 2: Listing Information ────────────────────────────────────── */}
-      {step === 1 && (
-        <div className="wizard-content card card-body">
-          <div className="wizard-section">
-            <h3 className="wizard-section-title">Listing Information</h3>
-
-            <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label">
-                  Tagline
-                  <CharCount value={form.tagline} max={LIMITS.tagline.max} />
-                </label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Short product description"
-                  maxLength={LIMITS.tagline.max}
-                  value={form.tagline}
-                  onChange={(e) => update('tagline', e.target.value)}
-                />
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
-                  Optional · Max {LIMITS.tagline.max} characters
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">
-                  Developer Name
-                  <CharCount value={form.developerName} max={LIMITS.developerName.max} />
-                </label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="Developer or company name"
-                  maxLength={LIMITS.developerName.max}
-                  value={form.developerName}
-                  onChange={(e) => update('developerName', e.target.value)}
-                />
+            {/* Tagline */}
+            <div className="form-group">
+              <label className="form-label">
+                Tagline
+                <CharCount value={form.tagline} max={LIMITS.tagline.max} />
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Short product description"
+                maxLength={LIMITS.tagline.max}
+                value={form.tagline}
+                onChange={(e) => update('tagline', e.target.value)}
+              />
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
+                Optional · Max {LIMITS.tagline.max} characters
               </div>
             </div>
 
-            {/* Logo */}
+            {/* Product Logo */}
             <div className="form-group">
               <label className="form-label">Product Logo</label>
               <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 8 }}>
@@ -493,6 +680,22 @@ export default function ProductCreate() {
               <FieldError msg={fieldErrors.logo} />
             </div>
 
+            {/* Developer Name */}
+            <div className="form-group">
+              <label className="form-label">
+                Developer Name
+                <CharCount value={form.developerName} max={LIMITS.developerName.max} />
+              </label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Developer or company name"
+                maxLength={LIMITS.developerName.max}
+                value={form.developerName}
+                onChange={(e) => update('developerName', e.target.value)}
+              />
+            </div>
+
             {/* Tags */}
             <div className="form-group">
               <label className="form-label">
@@ -527,13 +730,238 @@ export default function ProductCreate() {
               </div>
             </div>
           </div>
-
-          {renderRepeaterSection('overview', 'Overview')}
-          {renderRepeaterSection('features', 'Features')}
         </div>
       )}
 
-      {/* ── Step 3: Product Information ────────────────────────────────────── */}
+      {/* ── Step 2: Define Tabs ────────────────────────────────────────────── */}
+      {step === 1 && (
+        <div className="wizard-content card card-body">
+          {/* Overview (hardcoded) */}
+          {renderRepeaterSection('overview', 'Overview')}
+
+          {/* Features (hardcoded) */}
+          {renderRepeaterSection('features', 'Features')}
+
+          {/* Resources (hardcoded) */}
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">Resources</h3>
+            <p className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>
+              Upload PDF, Word, Excel, CSV or TXT documentation · Max {RESOURCE_MAX_SIZE_MB}MB per file
+            </p>
+            {form.resources.map((resItem, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '16px',
+                  padding: '12px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  marginBottom: '8px',
+                }}
+              >
+                <span style={{ flex: 1, fontSize: '14px' }}>{resItem.name}</span>
+                <a
+                  href={resItem.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ fontSize: 12, color: '#0183FF' }}
+                >
+                  Preview
+                </a>
+                <button
+                  type="button"
+                  className="btn btn-icon btn-ghost repeater-remove"
+                  onClick={() => removeResource(idx)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+
+            <div style={{ marginTop: '16px' }}>
+              {uploadingScreenshots['resource-upload'] ? (
+                <div className="spinner mb-sm" />
+              ) : (
+                <label
+                  className="btn btn-secondary"
+                  style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+                >
+                  <Upload size={16} /> Add Resource File
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.csv,.xls,.xlsx,.txt"
+                    onChange={handleResourceUpload}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+
+          {/* Custom Tabs */}
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">
+              Custom Tabs
+              <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>
+                {form.customTabs.length}/{LIMITS.maxCustomTabs} tabs
+              </span>
+            </h3>
+            <p className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>
+              Add custom tabs with a name and elements. Each element can have a title, description, and slidable images.
+            </p>
+
+            {form.customTabs.map((tab, tabIdx) => (
+              <div key={tabIdx} className="repeater-item" style={{ marginBottom: 16 }}>
+                {/* Tab header with collapse toggle */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: collapsedTabs[tabIdx] ? 0 : 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <button
+                      type="button"
+                      className="btn btn-icon btn-ghost"
+                      onClick={() => toggleTabCollapse(tabIdx)}
+                      title={collapsedTabs[tabIdx] ? 'Expand' : 'Collapse'}
+                    >
+                      {collapsedTabs[tabIdx] ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                    </button>
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>
+                      Tab {tabIdx + 1}{tab.tabName ? `: ${tab.tabName}` : ''}
+                    </span>
+                    <span style={{ fontSize: 11, color: '#9ca3af' }}>
+                      ({tab.elements.length}/{LIMITS.maxCustomTabElements} elements)
+                    </span>
+                  </div>
+                  <button
+                    className="btn btn-icon btn-ghost repeater-remove"
+                    onClick={() => removeCustomTab(tabIdx)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                {!collapsedTabs[tabIdx] && (
+                  <>
+                    {/* Tab Name */}
+                    <div className="form-group">
+                      <label className="form-label">
+                        Tab Name <span className="required">*</span>
+                        <CharCount value={tab.tabName} max={LIMITS.customTabName.max} />
+                      </label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="Enter tab name (2–50 characters)"
+                        maxLength={LIMITS.customTabName.max}
+                        value={tab.tabName}
+                        onChange={(e) => updateCustomTabName(tabIdx, e.target.value)}
+                      />
+                    </div>
+
+                    {/* Elements */}
+                    {tab.elements.map((el, elIdx) => (
+                      <div key={elIdx} style={{ padding: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <span style={{ fontWeight: 500, fontSize: 13, color: '#6b7280' }}>Element {elIdx + 1}</span>
+                          <button
+                            className="btn btn-icon btn-ghost"
+                            onClick={() => removeCustomTabElement(tabIdx, elIdx)}
+                            style={{ color: '#ef4444' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">
+                            Title
+                            <CharCount value={el.title} max={LIMITS.customTabElementTitle.max} />
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            maxLength={LIMITS.customTabElementTitle.max}
+                            value={el.title}
+                            onChange={(e) => updateCustomTabElement(tabIdx, elIdx, 'title', e.target.value)}
+                            placeholder="Element title"
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">
+                            Description
+                            <CharCount value={el.description} max={LIMITS.customTabElementDescription.max} warn={0.9} />
+                          </label>
+                          <textarea
+                            className="form-textarea"
+                            maxLength={LIMITS.customTabElementDescription.max}
+                            value={el.description}
+                            onChange={(e) => updateCustomTabElement(tabIdx, elIdx, 'description', e.target.value)}
+                            placeholder="Element description"
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">
+                            Images
+                            <span style={{ fontSize: 11, color: '#9ca3af', float: 'right' }}>
+                              {el.screenshots.length}/{SCREENSHOT_MAX_PER_SECTION} · Max 5MB each · JPEG/PNG/WebP/GIF
+                            </span>
+                          </label>
+                          <div className="screenshots-grid">
+                            {el.screenshots.map((ss, ssIdx) => (
+                              <div key={ssIdx} style={{ position: 'relative' }}>
+                                <img src={ss} alt="" className="screenshot-thumb" />
+                                <button
+                                  className="sliding-image-remove"
+                                  onClick={() => removeCustomTabScreenshot(tabIdx, elIdx, ssIdx)}
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            ))}
+                            {el.screenshots.length < SCREENSHOT_MAX_PER_SECTION && (
+                              uploadingScreenshots[`custom-${tabIdx}-${elIdx}`] ? (
+                                <div className="screenshot-upload-btn" style={{ cursor: 'default' }}>
+                                  <div className="spinner" style={{ width: 20, height: 20, borderWidth: 2 }} />
+                                </div>
+                              ) : (
+                                <label className="screenshot-upload-btn" title="Add images">
+                                  <Image size={16} />
+                                  <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp,image/gif"
+                                    multiple
+                                    onChange={(e) => handleCustomTabScreenshots(tabIdx, elIdx, e)}
+                                    style={{ display: 'none' }}
+                                  />
+                                </label>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    <button type="button" className="repeater-add" onClick={() => addCustomTabElement(tabIdx)}>
+                      <Plus size={16} /> Add Element
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+
+            {form.customTabs.length < LIMITS.maxCustomTabs && (
+              <button type="button" className="repeater-add" onClick={addCustomTab}>
+                <Plus size={16} /> Add Custom Tab
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 3: Define Attributes ──────────────────────────────────────── */}
       {step === 2 && (
         <div className="wizard-content card card-body">
           <div className="wizard-section">
@@ -592,94 +1020,6 @@ export default function ProductCreate() {
                 );
               })
             )}
-          </div>
-
-          <div className="wizard-section">
-            <h3 className="wizard-section-title">Support &amp; Policies</h3>
-            <div className="form-group">
-              <label className="form-label">
-                Support Description
-                <CharCount value={form.supportDescription} max={LIMITS.supportDescription.max} />
-              </label>
-              <textarea
-                className="form-textarea"
-                maxLength={LIMITS.supportDescription.max}
-                placeholder="Describe the support offered for this product"
-                value={form.supportDescription}
-                onChange={(e) => update('supportDescription', e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">
-                Policies
-                <CharCount value={form.policies} max={LIMITS.policies.max} />
-              </label>
-              <textarea
-                className="form-textarea"
-                maxLength={LIMITS.policies.max}
-                placeholder="Product policies, terms of use, etc."
-                value={form.policies}
-                onChange={(e) => update('policies', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="wizard-section">
-            <h3 className="wizard-section-title">Resources</h3>
-            <p className="text-muted" style={{ fontSize: 12, marginBottom: 16 }}>
-              Upload PDF, Word, Excel, CSV or TXT documentation · Max {RESOURCE_MAX_SIZE_MB}MB per file
-            </p>
-            {form.resources.map((resItem, idx) => (
-              <div
-                key={idx}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                  padding: '12px',
-                  background: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '6px',
-                  marginBottom: '8px',
-                }}
-              >
-                <span style={{ flex: 1, fontSize: '14px' }}>{resItem.name}</span>
-                <a
-                  href={resItem.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ fontSize: 12, color: '#0183FF' }}
-                >
-                  Preview
-                </a>
-                <button
-                  type="button"
-                  className="btn btn-icon btn-ghost repeater-remove"
-                  onClick={() => removeResource(idx)}
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-
-            <div style={{ marginTop: '16px' }}>
-              {uploadingScreenshots['resource-upload'] ? (
-                <div className="spinner mb-sm" />
-              ) : (
-                <label
-                  className="btn btn-secondary"
-                  style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                >
-                  <Upload size={16} /> Add Resource File
-                  <input
-                    type="file"
-                    accept=".pdf,.doc,.docx,.csv,.xls,.xlsx,.txt"
-                    onChange={handleResourceUpload}
-                    style={{ display: 'none' }}
-                  />
-                </label>
-              )}
-            </div>
           </div>
         </div>
       )}

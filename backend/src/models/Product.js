@@ -12,6 +12,17 @@ const featureSchema = new mongoose.Schema({
   screenshots: [{ type: String }],
 }, { _id: true });
 
+const customTabElementSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  description: { type: String, required: true },
+  screenshots: [{ type: String }],
+}, { _id: true });
+
+const customTabSchema = new mongoose.Schema({
+  tabName: { type: String, required: true, trim: true, maxlength: 50 },
+  elements: [customTabElementSchema],
+}, { _id: true });
+
 const productSchema = new mongoose.Schema({
   // Stage 1: Define Product
   name: {
@@ -28,6 +39,7 @@ const productSchema = new mongoose.Schema({
   tags: [{ type: String, trim: true }],
   overview: [overviewSchema],
   features: [featureSchema],
+  customTabs: [customTabSchema],
 
   // Stage 3: Product Information
   attributes: [{

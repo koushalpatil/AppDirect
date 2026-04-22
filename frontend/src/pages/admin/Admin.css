@@ -217,6 +217,7 @@
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-lg);
   padding: var(--space-lg);
+  padding-top: calc(var(--space-lg) + 20px);
   margin-bottom: var(--space-md);
   position: relative;
 }

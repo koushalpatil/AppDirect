@@ -119,36 +119,24 @@ export default function ProductDetail() {
       <div className="pd-tabs">
         <button className={`pd-tab ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>Overview</button>
         <button className={`pd-tab ${activeTab === 'features' ? 'active' : ''}`} onClick={() => setActiveTab('features')}>Features</button>
-        {(product.supportDescription || product.policies) && (
-          <button className={`pd-tab ${activeTab === 'policy' ? 'active' : ''}`} onClick={() => setActiveTab('policy')}>Policy & Support</button>
-        )}
         {product.resources && product.resources.length > 0 && (
           <button className={`pd-tab ${activeTab === 'resources' ? 'active' : ''}`} onClick={() => setActiveTab('resources')}>Resources</button>
         )}
+        {(product.customTabs || []).map((tab, idx) => (
+          <button
+            key={`custom-${idx}`}
+            className={`pd-tab ${activeTab === `custom-${idx}` ? 'active' : ''}`}
+            onClick={() => setActiveTab(`custom-${idx}`)}
+          >
+            {tab.tabName}
+          </button>
+        ))}
       </div>
 
       {/* Tab Content */}
       <div>
         {activeTab === 'overview' && renderBlocks(product.overview)}
         {activeTab === 'features' && renderBlocks(product.features)}
-        {activeTab === 'policy' && (
-          <div className="pd-block">
-            <div className="pd-block-text" style={{ width: '100%' }}>
-              {product.policies && (
-                <div style={{ marginBottom: 32 }}>
-                  <h3 className="pd-block-title">Policies</h3>
-                  <p className="pd-block-desc">{product.policies}</p>
-                </div>
-              )}
-              {product.supportDescription && (
-                <div>
-                  <h3 className="pd-block-title">Support</h3>
-                  <p className="pd-block-desc">{product.supportDescription}</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
         {activeTab === 'resources' && (
           <div className="pd-block">
             <div className="pd-block-text" style={{ width: '100%' }}>
@@ -164,6 +152,13 @@ export default function ProductDetail() {
             </div>
           </div>
         )}
+        {(product.customTabs || []).map((tab, idx) => (
+          activeTab === `custom-${idx}` && (
+            <div key={`custom-content-${idx}`}>
+              {renderBlocks(tab.elements)}
+            </div>
+          )
+        ))}
       </div>
 
       {/* Additional Information */}

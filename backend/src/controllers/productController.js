@@ -7,7 +7,7 @@ exports.createProduct = async (req, res) => {
   try {
     const {
       name, tagline, developerName, logo, tags,
-      overview, features, attributes,
+      overview, features, customTabs, attributes,
       supportDescription, policies, resources, status,
     } = req.body;
 
@@ -23,6 +23,7 @@ exports.createProduct = async (req, res) => {
       tags: tags || [],
       overview: overview || [],
       features: features || [],
+      customTabs: customTabs || [],
       attributes: attributes || [],
       supportDescription,
       policies,
@@ -123,7 +124,7 @@ exports.updateProduct = async (req, res) => {
     const changes = {};
     const updateFields = [
       'name', 'tagline', 'developerName', 'logo', 'tags',
-      'overview', 'features', 'attributes',
+      'overview', 'features', 'customTabs', 'attributes',
       'supportDescription', 'policies', 'resources', 'status',
     ];
 

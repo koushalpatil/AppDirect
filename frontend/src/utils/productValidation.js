@@ -41,6 +41,12 @@ export const LIMITS = {
   featureDescription: { min: 10, max: 5000 },
   supportDescription: { max: 3000 },
   policies: { max: 5000 },
+  // Custom tabs
+  maxCustomTabs: 5,
+  customTabName: { min: 2, max: 50 },
+  maxCustomTabElements: 10,
+  customTabElementTitle: { min: 2, max: 100 },
+  customTabElementDescription: { min: 10, max: 5000 },
 };
 
 // ── Validate image file (type + size) ─────────────────────────────────────────
@@ -240,6 +246,39 @@ export function validateProductForm(form) {
   if (form.policies && form.policies.length > LIMITS.policies.max) {
     errors.push(`Policies must be under ${LIMITS.policies.max} characters.`);
   }
+
+  // Custom Tabs
+  const customTabs = form.customTabs || [];
+  if (customTabs.length > LIMITS.maxCustomTabs) {
+    errors.push(`Maximum ${LIMITS.maxCustomTabs} custom tabs allowed.`);
+  }
+  customTabs.forEach((tab, ti) => {
+    const tn = (tab.tabName || '').trim();
+    if (!tn) {
+      errors.push(`Custom tab #${ti + 1} name is required.`);
+    } else if (tn.length < LIMITS.customTabName.min) {
+      errors.push(`Custom tab #${ti + 1} name must be at least ${LIMITS.customTabName.min} characters.`);
+    } else if (tn.length > LIMITS.customTabName.max) {
+      errors.push(`Custom tab #${ti + 1} name must be under ${LIMITS.customTabName.max} characters.`);
+    }
+    const elements = tab.elements || [];
+    if (elements.length > LIMITS.maxCustomTabElements) {
+      errors.push(`Custom tab "${tn || ti + 1}" can have at most ${LIMITS.maxCustomTabElements} elements.`);
+    }
+    elements.forEach((el, ei) => {
+      const et = (el.title || '').trim();
+      const ed = (el.description || '').trim();
+      if (et && et.length > LIMITS.customTabElementTitle.max) {
+        errors.push(`Custom tab "${tn}" element #${ei + 1} title must be under ${LIMITS.customTabElementTitle.max} characters.`);
+      }
+      if (ed && ed.length > LIMITS.customTabElementDescription.max) {
+        errors.push(`Custom tab "${tn}" element #${ei + 1} description must be under ${LIMITS.customTabElementDescription.max} characters.`);
+      }
+      if (el.screenshots && el.screenshots.length > SCREENSHOT_MAX_PER_SECTION) {
+        errors.push(`Custom tab "${tn}" element #${ei + 1} can have at most ${SCREENSHOT_MAX_PER_SECTION} screenshots.`);
+      }
+    });
+  });
 
   return errors;
 }
