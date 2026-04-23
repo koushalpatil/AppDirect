@@ -12,14 +12,24 @@ export default function ProductList() {
   const [statusFilter, setStatusFilter] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => { loadProducts(); }, [statusFilter]);
+  useEffect(() => { 
+    loadProducts(); 
+  }, [statusFilter]);
 
-  const loadProducts = async () => {
+  // Debounced search for live table updates
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadProducts(search);
+    }, 400); // Slightly longer debounce for full table refresh
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const loadProducts = async (currentSearch = search) => {
     try {
       setLoading(true);
       const params = { limit: 100 };
       if (statusFilter) params.status = statusFilter;
-      if (search) params.search = search;
+      if (currentSearch.trim()) params.search = currentSearch.trim();
       const res = await productAPI.getAll(params);
       setProducts(res.data.products || []);
     } catch (err) {
@@ -29,7 +39,7 @@ export default function ProductList() {
     }
   };
 
-  const handleSearch = (e) => {
+  const handleSearchSubmit = (e) => {
     e.preventDefault();
     loadProducts();
   };
@@ -57,16 +67,20 @@ export default function ProductList() {
         </Link>
       </div>
 
-      <form onSubmit={handleSearch} className="search-bar">
-        <input
-          type="text"
-          className="form-input"
-          placeholder="Search products..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button type="submit" className="btn btn-secondary"><Search size={16} /></button>
-      </form>
+      <div style={{ marginBottom: '1.5rem', maxWidth: 600 }}>
+        <form onSubmit={handleSearchSubmit} className="search-bar" style={{ marginBottom: 0 }}>
+          <input
+            type="text"
+            className="form-input"
+            placeholder="Search products by name, tagline, or developer..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <button type="submit" className="btn btn-secondary">
+            <Search size={16} />
+          </button>
+        </form>
+      </div>
 
       <div className="filter-row">
         {['', 'published', 'draft'].map(s => (

@@ -212,6 +212,7 @@ export default function PublicLayout() {
 
               {megaMenuOpen && (
                 <div className="pub-mega-menu">
+                  {/* ... mega menu content ... */}
                   <div className="pub-mega-cats">
                     <Link to="/products" className="pub-mega-view-all" onClick={() => setMegaMenuOpen(false)}>
                       View All
@@ -275,6 +276,10 @@ export default function PublicLayout() {
                 </div>
               )}
             </div>
+
+            <Link to="/my-apps" className="pub-nav-trigger">
+              My Apps
+            </Link>
           </div>
 
           <div className="pub-search-wrapper" ref={dropdownRef}>

@@ -169,10 +169,12 @@ exports.getProducts = async (req, res) => {
 
     if (status) filter.status = status;
     if (search) {
+      const trimmedSearch = search.trim();
       filter.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { tagline: { $regex: search, $options: 'i' } },
-        { tags: { $regex: search, $options: 'i' } },
+        { name: { $regex: trimmedSearch, $options: 'i' } },
+        { tagline: { $regex: trimmedSearch, $options: 'i' } },
+        { tags: { $regex: trimmedSearch, $options: 'i' } },
+        { developerName: { $regex: trimmedSearch, $options: 'i' } },
       ];
     }
     if (attributeId && attributeValue) {

@@ -1,5 +1,6 @@
 const router = require('express').Router();
 const auth = require('../middlewares/auth');
+const tryAuth = require('../middlewares/tryAuth');
 const adminOnly = require('../middlewares/rbac');
 const {
   getContactConfig,
@@ -14,13 +15,15 @@ const {
   getFooterConfig,
   updateFooterConfig,
   getPublicFooter,
+  getUserApps,
 } = require('../controllers/configController');
 
 // Public routes
 router.get('/public/homepage', getPublicHomepage);
 router.get('/public/contact-form', getPublicContactForm);
-router.post('/public/contact-form/submit', submitPublicContactForm);
+router.post('/public/contact-form/submit', tryAuth, submitPublicContactForm);
 router.get('/public/footer', getPublicFooter);
+router.get('/my-apps', auth, getUserApps);
 
 // Admin routes
 router.get('/contact', auth, adminOnly, getContactConfig);

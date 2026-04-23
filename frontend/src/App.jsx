@@ -26,6 +26,7 @@ import HomePage from './pages/public/HomePage';
 import AllProducts from './pages/public/AllProducts';
 import ProductDetail from './pages/public/ProductDetail';
 import ProductContact from './pages/public/ProductContact';
+import MyApps from './pages/public/MyApps';
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, loading } = useAuth();
@@ -59,16 +60,19 @@ function AppRoutes() {
         <Route path="config/footer" element={<FooterConfig />} />
       </Route>
 
-      {/* Public */}
-      <Route path="/" element={
-        <ProtectedRoute>
-          <PublicLayout />
-        </ProtectedRoute>
-      }>
+      {/* Public Routes - Mostly Open */}
+      <Route path="/" element={<PublicLayout />}>
         <Route index element={<HomePage />} />
         <Route path="products" element={<AllProducts />} />
         <Route path="products/:id" element={<ProductDetail />} />
         <Route path="products/:id/add-lead" element={<ProductContact />} />
+        
+        {/* Protected Public Routes */}
+        <Route path="my-apps" element={
+          <ProtectedRoute>
+            <MyApps />
+          </ProtectedRoute>
+        } />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

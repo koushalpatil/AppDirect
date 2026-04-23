@@ -82,6 +82,7 @@ export const configAPI = {
   getFooter: () => api.get('/config/footer'),
   updateFooter: (data) => api.put('/config/footer', data),
   getPublicFooter: () => api.get('/config/public/footer'),
+  getUserApps: () => api.get('/config/my-apps'),
 };
 
 // Upload

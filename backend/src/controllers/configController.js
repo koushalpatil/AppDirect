@@ -518,6 +518,7 @@ exports.submitPublicContactForm = async (req, res) => {
 
     const submission = await ContactSubmission.create({
       productId,
+      userId: req.user?._id,
       data: cleanData,
     });
 
@@ -528,6 +529,31 @@ exports.submitPublicContactForm = async (req, res) => {
   } catch (error) {
     console.error('Submit public contact form error:', error);
     return res.status(500).json({ message: 'Failed to submit contact form.' });
+  }
+};
+
+// Public: Get products user has interacted with (My Apps)
+exports.getUserApps = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    // Find unique productIds for this user
+    const submissions = await ContactSubmission.find({ userId })
+      .select('productId')
+      .distinct('productId');
+
+    if (submissions.length === 0) {
+      return res.json({ products: [] });
+    }
+
+    const products = await Product.find({
+      _id: { $in: submissions },
+      status: 'published'
+    }).select('name tagline logo tags status developerName');
+
+    res.json({ products });
+  } catch (error) {
+    console.error('Get user apps error:', error);
+    res.status(500).json({ message: 'Failed to retrieve your apps.' });
   }
 };
 
