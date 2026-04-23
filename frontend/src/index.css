@@ -753,6 +753,12 @@ input, textarea, select, button {
     --space-3xl: 48px;
   }
 
+  /* Global word-break safety for small screens */
+  body {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
   .btn-lg {
     padding: 12px 20px;
     font-size: var(--font-size-sm);
@@ -771,6 +777,11 @@ input, textarea, select, button {
 
   .glass-card {
     padding: var(--space-md);
+    overflow: hidden;
+  }
+
+  .card {
+    overflow: hidden;
   }
 }
 

@@ -658,7 +658,28 @@
     border-bottom: 1px solid #e5e7eb;
   }
 
-  .pub-search-wrapper,
+  /* Nav container: wrap so search moves to its own row */
+  .pub-nav-container {
+    padding: 0 16px;
+    gap: 8px;
+    height: auto;
+    min-height: 48px;
+    flex-wrap: wrap;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .pub-nav-left {
+    flex-shrink: 0;
+  }
+
+  .pub-search-wrapper {
+    order: 10;
+    flex: 1 1 100%;
+    max-width: 100%;
+    margin-left: 0;
+  }
+
   .pub-search-form {
     max-width: 100%;
   }
@@ -667,13 +688,13 @@
     padding: 0 16px;
   }
 
-  .pub-nav-container {
-    padding: 0 16px;
-    gap: 12px;
-  }
-
   .pub-brand-name {
     font-size: 15px;
+  }
+
+  /* Hide username on small screens, keep icons */
+  .pub-username {
+    display: none;
   }
 
   .pub-footer-main-container {
@@ -702,8 +723,11 @@
 
 @media (max-width: 480px) {
   .pub-top-container {
-    height: 42px;
-    padding: 0 12px;
+    height: auto;
+    min-height: 42px;
+    padding: 6px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   .pub-brand-icon {
@@ -713,32 +737,37 @@
   }
 
   .pub-brand-name {
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .pub-top-link {
-    font-size: 12px;
-    padding: 4px 10px;
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  .pub-top-actions {
+    gap: 6px;
   }
 
   .pub-nav-container {
-    height: 44px;
-    padding: 0 12px;
-    gap: 8px;
+    padding: 6px 12px;
+    gap: 6px;
   }
 
   .pub-nav-trigger {
-    font-size: 13px;
-    padding: 6px 10px;
+    font-size: 12px;
+    padding: 5px 8px;
+    gap: 2px;
   }
 
   .pub-search-input {
     height: 34px;
     font-size: 13px;
+    padding: 0 10px;
   }
 
   .pub-search-btn {
-    width: 36px;
+    width: 34px;
     height: 34px;
   }
 

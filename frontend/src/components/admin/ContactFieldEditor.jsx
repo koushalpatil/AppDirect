@@ -193,7 +193,7 @@ function PreviewContent({ fields }) {
     return <p style={{ textAlign: 'center', color: '#94a3b8' }}>No fields to preview.</p>;
   }
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+    <div className="contact-preview-grid">
       {fields.map((field) => (
         <div
           key={field._uid || field.fieldName}
@@ -398,7 +398,7 @@ function FieldFormModal({ isEdit, fieldForm, setFieldForm, modalErrors, optionIn
 
         {/* Number validations */}
         {fieldForm.type === 'number' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+          <div className="contact-num-grid">
             <div className="form-group">
               <label className="form-label">Min value</label>
               <input type="number" className="form-input" value={fieldForm.validations.min} onChange={(e) => setFieldForm((p) => ({ ...p, validations: { ...p.validations, min: e.target.value } }))} />
@@ -691,8 +691,8 @@ export default function ContactFieldEditor({ fields, setFields }) {
           <h3 className="modal-title">Form Preview</h3>
           <button className="btn btn-icon btn-ghost" onClick={closeModal}><X size={18} /></button>
         </div>
-        <div className="modal-body" style={{ background: '#f8fafc', padding: 40 }}>
-          <div style={{ background: 'white', padding: 32, borderRadius: 12, boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', maxWidth: 800, margin: '0 auto' }}>
+        <div className="modal-body contact-preview-modal-body">
+          <div className="contact-preview-card">
             <PreviewContent fields={stableFields} />
             <div style={{ marginTop: 32 }}>
               <button className="btn btn-primary" disabled>Submit Form</button>
@@ -714,6 +714,60 @@ export default function ContactFieldEditor({ fields, setFields }) {
           justify-content: center;
         }
         .drag-handle:active { cursor: grabbing; }
+
+        /* ── Form preview grid ── */
+        .contact-preview-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 24px;
+        }
+        .contact-num-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 16px;
+        }
+        .contact-preview-modal-body {
+          background: #f8fafc;
+          padding: 32px;
+        }
+        .contact-preview-card {
+          background: white;
+          padding: 28px;
+          border-radius: 12px;
+          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+          max-width: 800px;
+          margin: 0 auto;
+        }
+
+        @media (max-width: 768px) {
+          .contact-preview-grid {
+            grid-template-columns: 1fr;
+            gap: 16px;
+          }
+          .contact-num-grid {
+            grid-template-columns: 1fr;
+            gap: 12px;
+          }
+          .contact-preview-modal-body {
+            padding: 16px;
+          }
+          .contact-preview-card {
+            padding: 16px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .contact-preview-modal-body {
+            padding: 10px;
+          }
+          .contact-preview-card {
+            padding: 12px;
+            border-radius: 8px;
+          }
+          .contact-preview-grid {
+            gap: 12px;
+          }
+        }
       `}</style>
     </div>
   );

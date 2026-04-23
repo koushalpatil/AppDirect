@@ -843,25 +843,49 @@
     flex-direction: column;
     gap: var(--space-sm);
     padding: 12px 16px;
+    position: sticky;
+    top: 8px;
   }
 
   .modal {
     max-width: calc(100vw - 32px);
     margin: 16px;
+    overflow-x: hidden;
+  }
+
+  .modal-body {
+    overflow-x: hidden;
+    word-break: break-word;
   }
 
   .repeater-item {
     padding: var(--space-md);
     padding-top: calc(var(--space-md) + 20px);
+    overflow: hidden;
+    word-break: break-word;
   }
 
+  /* ── Admin table: set min-width so wrapper scrolls horizontally ── */
   .table-responsive {
     border-radius: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-table {
+    min-width: 700px;
   }
 
   .admin-table th,
   .admin-table td {
     padding: 10px 12px;
+  }
+
+  /* Hide Updated At and Updated By columns (5th and 6th) */
+  .admin-table th:nth-child(5),
+  .admin-table td:nth-child(5),
+  .admin-table th:nth-child(6),
+  .admin-table td:nth-child(6) {
+    display: none;
   }
 
   .table-product-cell {
@@ -888,6 +912,11 @@
 
   .option-input-row {
     flex-direction: column;
+  }
+
+  /* Catalog management: attribute options wrap safely */
+  .attribute-options {
+    gap: var(--space-xs);
   }
 
   .config-field-item {
@@ -919,6 +948,47 @@
   .homepage-section .grid-2 {
     grid-template-columns: 1fr;
   }
+
+  /* Form groups: prevent overflow */
+  .form-group {
+    overflow: hidden;
+  }
+
+  .wizard-section {
+    overflow: hidden;
+  }
+
+  .wizard-section-title {
+    font-size: var(--font-size-md);
+  }
+
+  /* Wizard control buttons: full-width stacked layout on mobile */
+  .wizard-controls {
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+    position: sticky;
+    top: 8px;
+    align-items: stretch;
+  }
+
+  .wizard-controls > .btn {
+    width: 100%;
+    min-width: unset !important;
+    order: 2;
+  }
+
+  .wizard-controls > .flex {
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    order: 1;
+  }
+
+  .wizard-controls > .flex > .btn {
+    width: 100%;
+    min-width: unset !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -940,17 +1010,42 @@
     padding: var(--space-md);
   }
 
+  /* ── Admin table: even smaller on very narrow screens ── */
   .admin-table {
     font-size: 12px;
+    min-width: 500px;
   }
 
   .admin-table th {
     font-size: 10px;
-    padding: 10px;
+    padding: 8px;
   }
 
   .admin-table td {
-    padding: 10px;
+    padding: 8px;
+  }
+
+  /* Hide Created By column as well (4th) */
+  .admin-table th:nth-child(4),
+  .admin-table td:nth-child(4) {
+    display: none;
+  }
+
+  .table-product-logo,
+  .product-logo-placeholder-sm {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+
+  .table-product-name {
+    font-size: 13px;
+  }
+
+  .table-product-tagline {
+    max-width: 100px;
+    font-size: 11px;
   }
 
   .table-actions .btn {
@@ -958,22 +1053,40 @@
     font-size: 11px;
   }
 
-  .screenshots-grid {
-    justify-content: center;
+  .wizard-controls {
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    gap: 6px;
   }
 
-  .screenshot-thumb,
-  .screenshot-upload-btn {
-    width: 64px;
-    height: 48px;
+  .wizard-controls .btn {
+    font-size: 11px;
+    padding: 8px 12px;
+    min-width: unset !important;
   }
 
-  .sliding-image-item {
-    width: 100px;
-    height: 66px;
+  .wizard-controls > .flex {
+    gap: 6px;
   }
 
-  .image-upload-area {
-    padding: var(--space-md);
+  /* Even tighter wizard content on very small screens */
+  .wizard-content {
+    overflow: hidden;
+  }
+
+  .wizard-content.card.card-body {
+    padding: 10px;
+  }
+
+  .wizard-section {
+    margin-bottom: var(--space-md);
+  }
+
+  .wizard-section-title {
+    font-size: var(--font-size-sm);
+  }
+
+  .form-label {
+    font-size: var(--font-size-xs);
   }
 }

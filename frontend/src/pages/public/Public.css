@@ -1214,12 +1214,25 @@
 }
 
 @media (max-width: 768px) {
+  .pd-page {
+    padding: 0 16px 32px;
+    overflow-x: hidden;
+  }
+
   .pd-header { flex-direction: column; }
   .pd-header-left { flex-direction: column; align-items: center; text-align: center; }
   .pd-block, .pd-block.reverse { flex-direction: column; gap: 20px; }
   .pub-hero-img-wrap { height: 320px; }
-  .pub-slider-container { max-width: 100%; }
+  .pub-slider-container { max-width: 100%; overflow: hidden; }
   .pub-slider-slide img { height: 220px; }
+
+  /* Prevent text overflow on detail page */
+  .pd-block-desc,
+  .pd-tagline,
+  .pd-title {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
 
   .homepage .pub-products-row .pub-product-card {
     width: 230px;
@@ -1323,6 +1336,7 @@
 
   .pd-page {
     padding: 0 12px 32px;
+    overflow-x: hidden;
   }
 
   .pd-title {
@@ -1339,6 +1353,28 @@
 
   .pd-block-desc {
     font-size: 14px;
+  }
+
+  .pd-additional {
+    padding: 16px;
+    border-radius: 12px;
+  }
+
+  .pd-additional-title {
+    font-size: 17px;
+    margin-bottom: 16px;
+  }
+
+  .pd-logo, .pd-logo-placeholder {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    font-size: 24px;
+  }
+
+  .pd-slider-section .pub-slider-btn {
+    width: 32px;
+    height: 32px;
   }
 
   .ap-pagination {
