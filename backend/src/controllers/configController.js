@@ -421,7 +421,7 @@ exports.getPublicHomepage = async (req, res) => {
   }
 };
 
-// Public: Get contact form fields
+// Public: Get contact form fields (global default)
 exports.getPublicContactForm = async (req, res) => {
   try {
     const config = await getOrCreateContactConfig();
@@ -430,6 +430,36 @@ exports.getPublicContactForm = async (req, res) => {
     res.json({ fields });
   } catch (error) {
     console.error('Get public contact form error:', error);
+    res.status(500).json({ message: 'Failed to retrieve contact form.' });
+  }
+};
+
+// Public: Get contact form fields for a specific product (checks toggle)
+exports.getPublicProductContactForm = async (req, res) => {
+  try {
+    const product = await Product.findOne({
+      _id: req.params.id,
+      status: 'published',
+    }).select('useCustomContactForm contactFields');
+
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found.' });
+    }
+
+    // If product uses custom form AND has fields configured, use those
+    if (product.useCustomContactForm && product.contactFields && product.contactFields.length > 0) {
+      const fields = validateFieldConfigs(product.contactFields).normalized
+        .filter((field) => field.type !== 'file');
+      return res.json({ fields, isCustom: true });
+    }
+
+    // Otherwise fall back to global config
+    const config = await getOrCreateContactConfig();
+    const fields = validateFieldConfigs(config.contactFields || []).normalized
+      .filter((field) => field.type !== 'file');
+    res.json({ fields, isCustom: false });
+  } catch (error) {
+    console.error('Get public product contact form error:', error);
     res.status(500).json({ message: 'Failed to retrieve contact form.' });
   }
 };
@@ -446,13 +476,20 @@ exports.submitPublicContactForm = async (req, res) => {
       return res.status(400).json({ message: 'values object is required.' });
     }
 
-    const product = await Product.findById(productId).select('_id status');
+    const product = await Product.findById(productId).select('_id status useCustomContactForm contactFields');
     if (!product || product.status !== 'published') {
       return res.status(400).json({ message: 'Invalid product.' });
     }
 
-    const config = await getOrCreateContactConfig();
-    const fields = validateFieldConfigs(config.contactFields || []).normalized
+    // Use product's own fields if toggle is ON and fields exist, otherwise global
+    let rawFields;
+    if (product.useCustomContactForm && product.contactFields && product.contactFields.length > 0) {
+      rawFields = product.contactFields;
+    } else {
+      const config = await getOrCreateContactConfig();
+      rawFields = config.contactFields || [];
+    }
+    const fields = validateFieldConfigs(rawFields).normalized
       .filter((field) => field.type !== 'file');
 
     const cleanData = {};

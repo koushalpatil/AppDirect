@@ -2,13 +2,27 @@ const Product = require('../models/Product');
 const Attribute = require('../models/Attribute');
 const ProductEditLog = require('../models/ProductEditLog');
 
+/**
+ * Strip client-only metadata (_uid) from contact fields before persisting.
+ * If useCustomContactForm is false, return an empty array.
+ */
+const sanitizeContactFields = (fields, useCustom) => {
+  if (!useCustom) return [];
+  if (!Array.isArray(fields)) return [];
+  return fields.map(({ _uid, _doc, __v, ...field }) => ({
+    ...field,
+    options: (field.options || []).map(({ _id, ...opt }) => opt),
+  }));
+};
+
 // Create a new product (draft or published)
 exports.createProduct = async (req, res) => {
   try {
     const {
       name, tagline, developerName, logo, tags,
       overview, features, customTabs, attributes,
-      supportDescription, policies, resources, status,
+      supportDescription, policies, resources,
+      useCustomContactForm, contactFields, status,
     } = req.body;
 
     if (!name || !name.trim()) {
@@ -28,6 +42,8 @@ exports.createProduct = async (req, res) => {
       supportDescription,
       policies,
       resources: resources || [],
+      useCustomContactForm: !!useCustomContactForm,
+      contactFields: sanitizeContactFields(contactFields, useCustomContactForm),
       status: status || 'draft',
       createdBy: req.user._id,
       updatedBy: req.user._id,
@@ -125,14 +141,20 @@ exports.updateProduct = async (req, res) => {
     const updateFields = [
       'name', 'tagline', 'developerName', 'logo', 'tags',
       'overview', 'features', 'customTabs', 'attributes',
-      'supportDescription', 'policies', 'resources', 'status',
+      'supportDescription', 'policies', 'resources',
+      'useCustomContactForm', 'contactFields', 'status',
     ];
 
     updateFields.forEach((field) => {
       if (req.body[field] !== undefined) {
         previousValues[field] = product[field];
-        changes[field] = req.body[field];
-        product[field] = req.body[field];
+        let value = req.body[field];
+        // Sanitize contactFields: strip _uid and clear when toggle is off
+        if (field === 'contactFields') {
+          value = sanitizeContactFields(value, req.body.useCustomContactForm ?? product.useCustomContactForm);
+        }
+        changes[field] = value;
+        product[field] = value;
       }
     });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { productAPI, catalogAPI, uploadAPI } from '../../services/api';
+import { productAPI, catalogAPI, uploadAPI, configAPI } from '../../services/api';
 import toast from 'react-hot-toast';
 import { Check, Plus, Trash2, Upload, Image, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import './Admin.css';
@@ -15,8 +15,9 @@ import {
   SCREENSHOT_MAX_PER_SECTION,
   RESOURCE_MAX_SIZE_MB,
 } from '../../utils/productValidation';
+import ContactFieldEditor from '../../components/admin/ContactFieldEditor';
 
-const STEPS = ['Define Product', 'Define Tabs', 'Define Attributes'];
+const STEPS = ['Define Product', 'Define Tabs', 'Define Attributes', 'Configure Contact Us Form'];
 
 // Character counter helper
 function CharCount({ value, max, warn = 0.85 }) {
@@ -58,6 +59,8 @@ export default function ProductCreate() {
     customTabs: [],
     attributes: [],
     resources: [],
+    useCustomContactForm: false,
+    contactFields: [],
   });
 
   const [tagInput, setTagInput] = useState('');
@@ -1019,6 +1022,100 @@ export default function ProductCreate() {
                   </div>
                 );
               })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 4: Configure Contact Us Form ──────────────────────────────── */}
+      {step === 3 && (
+        <div className="wizard-content card card-body">
+          <div className="wizard-section">
+            <h3 className="wizard-section-title">Contact Us Form</h3>
+            <p className="text-muted" style={{ fontSize: 13, marginBottom: 24, paddingLeft: 4 }}>
+              Decide whether to use the default marketplace contact form or create a custom one for this product.
+            </p>
+
+            <div className="repeater-item no-padding" style={{ marginBottom: 32, backgroundColor: '#f8fafc' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span style={{ fontWeight: 600, fontSize: 15, color: '#1e293b' }}>Custom Contact Form</span>
+                  <p className="text-muted" style={{ fontSize: 12, marginTop: 4 }}>
+                    {form.useCustomContactForm 
+                      ? "Custom form is enabled. You can add, edit, or remove fields below."
+                      : "Default admin configuration is being used for this product."}
+                  </p>
+                </div>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={form.useCustomContactForm}
+                    onChange={async (e) => {
+                      const checked = e.target.checked;
+                      
+                      if (!checked) {
+                        // Turning OFF — just update the toggle, keep fields intact for potential re-enable
+                        update('useCustomContactForm', false);
+                        return;
+                      }
+
+                      // Turning ON — fetch global defaults if no custom fields yet
+                      if (form.contactFields.length === 0) {
+                        try {
+                          const res = await configAPI.getContact();
+                          const globalFields = (res.data.config?.contactFields || []).map((f) => {
+                            // Deep-clone and strip MongoDB metadata to prevent duplication
+                            const { _id, __v, _doc, ...clean } = f._doc || f;
+                            return {
+                              ...clean,
+                              isDefault: true,
+                              options: (clean.options || []).map(({ _id: _oid, ...opt }) => opt),
+                              validations: clean.validations
+                                ? (({ _id: _vid, ...rest }) => rest)(clean.validations)
+                                : {},
+                            };
+                          });
+                          // Batch both updates into a single setForm call
+                          setForm((prev) => ({
+                            ...prev,
+                            useCustomContactForm: true,
+                            contactFields: globalFields,
+                          }));
+                          setFieldErrors((prev) => ({ ...prev, useCustomContactForm: null, contactFields: null }));
+                          return;
+                        } catch (err) {
+                          console.error("Failed to fetch global contact fields", err);
+                          toast.error("Failed to load default fields. You can still add them manually.");
+                        }
+                      }
+                      update('useCustomContactForm', true);
+                    }}
+                  />
+                  <span className="toggle-slider" />
+                </label>
+              </div>
+            </div>
+
+            {form.useCustomContactForm && (
+              <div className="fade-in">
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 24 }}>
+                  <h4 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Form Fields</h4>
+                  <ContactFieldEditor
+                    fields={form.contactFields}
+                    setFields={(val) => {
+                      const next = typeof val === 'function' ? val(form.contactFields) : val;
+                      update('contactFields', next);
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+            
+            {!form.useCustomContactForm && (
+              <div style={{ textAlign: 'center', padding: '40px 20px', background: '#f1f5f9', borderRadius: 8, color: '#64748b' }}>
+                <p style={{ fontSize: 14 }}>Using the default system contact form.</p>
+                <small>Enable the toggle above to customize fields specifically for this product.</small>
+              </div>
             )}
           </div>
         </div>

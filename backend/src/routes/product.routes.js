@@ -14,12 +14,16 @@ const {
   getFilterFacets,
   getPublicProduct,
 } = require('../controllers/productController');
+const {
+  getPublicProductContactForm,
+} = require('../controllers/configController');
 
 // Public routes
 router.get('/public/search', searchProducts);
 router.get('/public/facets', getFilterFacets);
 router.get('/public', getPublishedProducts);
 router.get('/public/by-attribute', getProductsByAttribute);
+router.get('/public/:id/contact-form', getPublicProductContactForm);
 router.get('/public/:id', getPublicProduct);
 
 // Admin routes

@@ -37,7 +37,7 @@ export default function ProductContact() {
     try {
       const [productRes, formRes] = await Promise.all([
         productAPI.getPublicOne(id),
-        configAPI.getPublicContactForm(),
+        productAPI.getPublicContactForm(id),
       ]);
 
       const configuredFields = (formRes.data.fields || [])
@@ -256,9 +256,9 @@ export default function ProductContact() {
         )}
 
         {field.type === 'radio' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
+          <div className="pub-choice-list grid-cols">
             {(field.options || []).map((opt) => (
-              <label key={opt.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <label key={opt.value} className="pub-choice-item">
                 <input
                   type="radio"
                   name={field.fieldName}
@@ -266,22 +266,24 @@ export default function ProductContact() {
                   checked={value === opt.value}
                   onChange={handleChange}
                 />
-                <span>{opt.label}</span>
+                <span className="pub-radio-box" />
+                <span className="pub-choice-label">{opt.label}</span>
               </label>
             ))}
           </div>
         )}
 
         {field.type === 'checkbox' && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6 }}>
+          <div className="pub-choice-list grid-cols">
             {(field.options || []).map((opt) => (
-              <label key={opt.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <label key={opt.value} className="pub-choice-item">
                 <input
                   type="checkbox"
                   checked={Array.isArray(value) && value.includes(opt.value)}
                   onChange={() => handleCheckboxChange(field.fieldName, opt.value)}
                 />
-                <span>{opt.label}</span>
+                <span className="pub-check-box" />
+                <span className="pub-choice-label">{opt.label}</span>
               </label>
             ))}
           </div>

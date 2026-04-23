@@ -1058,7 +1058,143 @@
   to { transform: rotate(360deg); }
 }
 
+/* ============ FORM CONTROLS: CHECKBOX & RADIO ============ */
+
+.pub-choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.pub-choice-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  transition: all 0.2s;
+  border: 1px solid #e5e7eb;
+  background-color: #f8fafc;
+  width: 100%;
+}
+
+.pub-choice-item:hover {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.pub-choice-item input:checked {
+  border-color: #0183FF;
+}
+
+.pub-choice-item:has(input:checked) {
+  background-color: rgba(1, 131, 255, 0.05);
+  border-color: #0183FF;
+}
+
+/* Hide default input */
+.pub-choice-item input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+/* Custom indicator base */
+.pub-check-box, .pub-radio-box {
+  position: relative;
+  height: 22px;
+  width: 22px;
+  background-color: #fff;
+  border: 2px solid #cbd5e1;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.pub-check-box {
+  border-radius: 6px;
+}
+
+.pub-radio-box {
+  border-radius: 50%;
+}
+
+/* Hover state indicator */
+.pub-choice-item:hover input ~ .pub-check-box,
+.pub-choice-item:hover input ~ .pub-radio-box {
+  border-color: #94a3b8;
+}
+
+/* Checked state indicator */
+.pub-choice-item input:checked ~ .pub-check-box,
+.pub-choice-item input:checked ~ .pub-radio-box {
+  background-color: #0183FF;
+  border-color: #0183FF;
+}
+
+/* Inner tick for checkbox - Centered correctly */
+.pub-check-box::after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: 50%;
+  top: 45%;
+  width: 6px;
+  height: 11px;
+  border: solid white;
+  border-width: 0 2.5px 2.5px 0;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.pub-choice-item input:checked ~ .pub-check-box::after {
+  display: block;
+}
+
+/* Inner dot for radio - Centered correctly */
+.pub-radio-box::after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: white;
+  transform: translate(-50%, -50%);
+}
+
+.pub-choice-item input:checked ~ .pub-radio-box::after {
+  display: block;
+}
+
+.pub-choice-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  transition: color 0.2s;
+}
+
+.pub-choice-item input:checked ~ .pub-choice-label {
+  color: #0f172a;
+}
+
+
+/* Custom Grid for 2-column layout in desktop */
+@media (min-width: 640px) {
+  .pub-choice-list.grid-cols {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* ============ RESPONSIVE ============ */
+
 
 @media (max-width: 900px) {
   .all-products-page {
