@@ -92,38 +92,88 @@ export default function ProductList() {
           </Link>
         </div>
       ) : (
-        <div className="product-grid">
-          {products.map(product => (
-            <div key={product._id} className="card product-card" onClick={() => navigate(`/admin/products/${product._id}/edit`)}>
-              <div className="product-card-body">
-                <div className="product-card-header">
-                  {product.logo ? (
-                    <img src={product.logo} alt={product.name} className="product-logo" />
-                  ) : (
-                    <div className="product-logo-placeholder">{product.name[0]}</div>
-                  )}
-                  <div>
-                    <div className="product-card-title">{product.name}</div>
-                    {product.tagline && <div className="product-card-tagline">{product.tagline}</div>}
-                  </div>
-                </div>
+        <div className="table-responsive">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Status</th>
+                <th>Created At</th>
+                <th>Created By</th>
+                <th>Updated At</th>
+                <th>Updated By</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map(product => {
+                const createdByName = product.createdBy?.firstName 
+                  ? `${product.createdBy.firstName} ${product.createdBy.lastName}` 
+                  : 'System';
+                
+                const updatedByName = product.updatedBy?.firstName 
+                  ? `${product.updatedBy.firstName} ${product.updatedBy.lastName}` 
+                  : createdByName; // Fallback to createdBy if never updated OR system if both missing
 
-                <div className="product-card-meta">
-                  <span className={`badge ${product.status === 'published' ? 'badge-success' : 'badge-warning'}`}>
-                    {product.status}
-                  </span>
-                  <div className="product-card-actions" onClick={e => e.stopPropagation()}>
-                    <button className="btn btn-icon btn-ghost" onClick={() => navigate(`/admin/products/${product._id}/edit`)} title="Edit">
-                      <Edit3 size={14} />
-                    </button>
-                    <button className="btn btn-icon btn-ghost" onClick={() => handleDelete(product._id, product.name)} title="Delete">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
+                return (
+                  <tr key={product._id} className="table-row-hover" onClick={() => navigate(`/admin/products/${product._id}/edit`)}>
+                    <td>
+                      <div className="table-product-cell">
+                        {product.logo ? (
+                          <img src={product.logo} alt={product.name} className="table-product-logo" />
+                        ) : (
+                          <div className="product-logo-placeholder-sm">{product.name[0]}</div>
+                        )}
+                        <div>
+                          <div className="table-product-name">{product.name}</div>
+                          {product.tagline && <div className="table-product-tagline">{product.tagline}</div>}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className={`badge ${product.status === 'published' ? 'badge-success' : 'badge-warning'}`}>
+                        {product.status}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="table-date-cell">
+                        <span>{new Date(product.createdAt).toLocaleDateString()}</span>
+                        <small>{new Date(product.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="table-user-cell">
+                        <div className="table-user-avatar">{createdByName[0]}</div>
+                        {createdByName}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="table-date-cell">
+                        <span>{new Date(product.updatedAt).toLocaleDateString()}</span>
+                        <small>{new Date(product.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</small>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="table-user-cell">
+                        <div className="table-user-avatar">{updatedByName[0]}</div>
+                        {updatedByName}
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <div className="table-actions" onClick={e => e.stopPropagation()}>
+                        <button className="btn btn-icon btn-ghost" onClick={() => navigate(`/admin/products/${product._id}/edit`)} title="Edit">
+                          <Edit3 size={14} />
+                        </button>
+                        <button className="btn btn-icon btn-ghost" onClick={() => handleDelete(product._id, product.name)} title="Delete">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

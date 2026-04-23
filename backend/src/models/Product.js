@@ -1,20 +1,20 @@
 const mongoose = require('mongoose');
 
 const overviewSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  description: { type: String, required: true },
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
   screenshots: [{ type: String }],
 }, { _id: true });
 
 const featureSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  description: { type: String, required: true },
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
   screenshots: [{ type: String }],
 }, { _id: true });
 
 const customTabElementSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  description: { type: String, required: true },
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
   screenshots: [{ type: String }],
 }, { _id: true });
 

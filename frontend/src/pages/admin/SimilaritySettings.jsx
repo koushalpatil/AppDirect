@@ -40,6 +40,13 @@ export default function SimilaritySettings() {
   };
 
   const handleSave = async () => {
+    if (config.minSimilarityScore < 0 || config.minSimilarityScore > 1) {
+      return toast.error('Similarity score must be between 0 and 1');
+    }
+    if (config.maxResults < 1 || config.maxResults > 20) {
+      return toast.error('Max results must be between 1 and 20');
+    }
+
     setSaving(true);
     try {
       await configAPI.updateSimilarity(config);

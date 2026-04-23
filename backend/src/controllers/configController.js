@@ -203,6 +203,8 @@ const validateSubmissionValue = (field, rawValue) => {
   const fieldLabel = field.label || field.fieldName;
   const v = field.validations || {};
   const optionValues = new Set((field.options || []).map((o) => o.value));
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const telRegex = /^[+]?[\d\s().-]{7,20}$/;
 
   if (field.required && isBlank(rawValue)) {
     return { error: v.customError || `${fieldLabel} is required.` };
@@ -261,8 +263,11 @@ const validateSubmissionValue = (field, rawValue) => {
   const textVal = String(rawValue).trim();
 
   if (field.type === 'email') {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(textVal)) return { error: v.customError || `${fieldLabel} must be a valid email address.` };
+  }
+
+  if (field.type === 'tel') {
+    if (!telRegex.test(textVal)) return { error: v.customError || `${fieldLabel} must be a valid phone number.` };
   }
 
   if (field.type === 'url') {
@@ -598,6 +603,22 @@ exports.updateFooterConfig = async (req, res) => {
     const { footerSections, footerContent, socialMedia, bottomFooterLinks, bottomFooterCopyright } = req.body;
     const errors = [];
 
+    const FOOTER_LIMITS = {
+      sectionTitle: 100,
+      linkTitle: 100,
+      linkUrl: 500,
+      copyright: 200,
+      contentTitle: 200,
+      contentDescription: 1000,
+    };
+
+    const isValidUrl = (str) => {
+      if (!str) return false;
+      const s = str.trim();
+      if (s.startsWith('/')) return true; // relative URL
+      try { const u = new URL(s); return u.protocol === 'http:' || u.protocol === 'https:'; } catch { return false; }
+    };
+
     // Validate sections
     if (footerSections !== undefined) {
       if (!Array.isArray(footerSections)) {
@@ -607,10 +628,14 @@ exports.updateFooterConfig = async (req, res) => {
       } else {
         footerSections.forEach((section, i) => {
           if (!section.title || !section.title.trim()) errors.push(`Section #${i + 1}: title is required.`);
+          else if (section.title.trim().length > FOOTER_LIMITS.sectionTitle) errors.push(`Section #${i + 1}: title must be under ${FOOTER_LIMITS.sectionTitle} characters.`);
           if (section.links && section.links.length > 7) errors.push(`Section #${i + 1}: maximum 7 links allowed.`);
           (section.links || []).forEach((link, j) => {
             if (!link.title || !link.title.trim()) errors.push(`Section #${i + 1}, Link #${j + 1}: title is required.`);
+            else if (link.title.trim().length > FOOTER_LIMITS.linkTitle) errors.push(`Section #${i + 1}, Link #${j + 1}: title must be under ${FOOTER_LIMITS.linkTitle} characters.`);
             if (!link.url || !link.url.trim()) errors.push(`Section #${i + 1}, Link #${j + 1}: URL is required.`);
+            else if (link.url.trim().length > FOOTER_LIMITS.linkUrl) errors.push(`Section #${i + 1}, Link #${j + 1}: URL must be under ${FOOTER_LIMITS.linkUrl} characters.`);
+            else if (!isValidUrl(link.url)) errors.push(`Section #${i + 1}, Link #${j + 1}: URL must be a valid HTTP/HTTPS URL or start with /.`);
           });
         });
       }
@@ -624,6 +649,8 @@ exports.updateFooterConfig = async (req, res) => {
         socialMedia.forEach((sm, i) => {
           if (!VALID_PLATFORMS.has(sm.platform)) errors.push(`Social #${i + 1}: invalid platform "${sm.platform}".`);
           if (!sm.url || !sm.url.trim()) errors.push(`Social #${i + 1}: URL is required.`);
+          else if (sm.url.trim().length > FOOTER_LIMITS.linkUrl) errors.push(`Social #${i + 1}: URL must be under ${FOOTER_LIMITS.linkUrl} characters.`);
+          else if (!isValidUrl(sm.url)) errors.push(`Social #${i + 1}: URL must be a valid HTTP/HTTPS URL.`);
         });
       }
     }
@@ -635,8 +662,26 @@ exports.updateFooterConfig = async (req, res) => {
       } else {
         bottomFooterLinks.forEach((link, i) => {
           if (!link.title || !link.title.trim()) errors.push(`Bottom Link #${i + 1}: title is required.`);
+          else if (link.title.trim().length > FOOTER_LIMITS.linkTitle) errors.push(`Bottom Link #${i + 1}: title must be under ${FOOTER_LIMITS.linkTitle} characters.`);
           if (!link.url || !link.url.trim()) errors.push(`Bottom Link #${i + 1}: URL is required.`);
+          else if (link.url.trim().length > FOOTER_LIMITS.linkUrl) errors.push(`Bottom Link #${i + 1}: URL must be under ${FOOTER_LIMITS.linkUrl} characters.`);
+          else if (!isValidUrl(link.url)) errors.push(`Bottom Link #${i + 1}: URL must be a valid HTTP/HTTPS URL or start with /.`);
         });
+      }
+    }
+
+    // Validate copyright
+    if (bottomFooterCopyright !== undefined && String(bottomFooterCopyright).length > FOOTER_LIMITS.copyright) {
+      errors.push(`Copyright text must be under ${FOOTER_LIMITS.copyright} characters.`);
+    }
+
+    // Validate footer content
+    if (footerContent !== undefined) {
+      if (footerContent.title && String(footerContent.title).length > FOOTER_LIMITS.contentTitle) {
+        errors.push(`Footer content title must be under ${FOOTER_LIMITS.contentTitle} characters.`);
+      }
+      if (footerContent.description && String(footerContent.description).length > FOOTER_LIMITS.contentDescription) {
+        errors.push(`Footer content description must be under ${FOOTER_LIMITS.contentDescription} characters.`);
       }
     }
 
@@ -653,7 +698,7 @@ exports.updateFooterConfig = async (req, res) => {
     if (footerContent !== undefined) config.footerContent = footerContent;
     if (socialMedia !== undefined) config.socialMedia = socialMedia;
     if (bottomFooterLinks !== undefined) config.bottomFooterLinks = bottomFooterLinks;
-    if (bottomFooterCopyright !== undefined) config.bottomFooterCopyright = bottomFooterCopyright;
+    if (bottomFooterCopyright !== undefined) config.bottomFooterCopyright = String(bottomFooterCopyright).slice(0, FOOTER_LIMITS.copyright);
     config.updatedBy = req.user._id;
     await config.save();
 

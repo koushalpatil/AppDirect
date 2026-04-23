@@ -191,6 +191,7 @@ export default function HomepageConfig() {
               className="form-input"
               placeholder="e.g., Trending Partners"
               value={categoryTitle}
+              maxLength={100}
               onChange={(e) => setCategoryTitle(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addCategory())}
             />

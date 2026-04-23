@@ -5,6 +5,9 @@ import toast from 'react-hot-toast';
 import { X } from 'lucide-react';
 import './Public.css'; // Will use pub-modal CSS classes for styling
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const TEL_RE = /^[+]?[\d\s().-]{7,20}$/;
+
 const isEmpty = (value) => value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0);
 
 const getInitialValue = (field) => {
@@ -106,10 +109,21 @@ export default function ProductContact() {
     }
 
     const value = String(rawValue).trim();
+
+    if (field.type === 'email') {
+      if (!EMAIL_RE.test(value)) return validations.customError || `${fieldLabel} must be a valid email address`;
+    }
+
+    if (field.type === 'tel') {
+      if (!TEL_RE.test(value)) return validations.customError || `${fieldLabel} must be a valid phone number`;
+    }
+
     if (field.type === 'url') {
       try {
-        // eslint-disable-next-line no-new
-        new URL(value);
+        const u = new URL(value);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          return validations.customError || `${fieldLabel} must be a valid HTTP/HTTPS URL`;
+        }
       } catch {
         return validations.customError || `${fieldLabel} must be a valid URL`;
       }
@@ -200,7 +214,7 @@ export default function ProductContact() {
       onChange: handleChange,
       placeholder: field.placeholder || '',
       required: !!field.required,
-      className: 'pub-form-input',
+      className: `pub-form-input ${errors[field.fieldName] ? 'pub-form-input-error' : ''}`,
     };
 
     return (
@@ -220,7 +234,7 @@ export default function ProductContact() {
         {field.type === 'textarea' && (
           <textarea
             {...commonProps}
-            className="pub-form-textarea"
+            className={`pub-form-textarea ${errors[field.fieldName] ? 'pub-form-input-error' : ''}`}
             rows={5}
             minLength={validations.minLength}
             maxLength={validations.maxLength}
@@ -324,7 +338,7 @@ export default function ProductContact() {
             </button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ padding: '32px' }}>
+          <form onSubmit={handleSubmit} style={{ padding: '32px' }} noValidate>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
             {fields.map((field) => renderField(field))}
           </div>

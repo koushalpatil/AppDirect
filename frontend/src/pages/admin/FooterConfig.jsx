@@ -53,6 +53,53 @@ const TABS = [
   { id: 'bottom', label: 'Bottom Bar', Icon: PanelBottom },
 ];
 
+const LIMITS = {
+  sectionTitle: 100,
+  linkTitle: 100,
+  linkUrl: 500,
+  contentTitle: 200,
+  contentDescription: 1000,
+  socialUrl: 500,
+  copyright: 200,
+  bottomLinkTitle: 100,
+  bottomLinkUrl: 500,
+};
+
+const isValidUrl = (str) => {
+  if (!str) return true; // Optional fields can be empty
+  const s = str.trim();
+  if (s.startsWith('/')) return true; // support relative paths
+  try {
+    const u = new URL(s);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
+// Character counter helper
+function CharCount({ value, max, warn = 0.85 }) {
+  const len = (value || '').length;
+  const ratio = len / max;
+  const color = ratio >= 1 ? '#ef4444' : ratio >= warn ? '#f59e0b' : '#9ca3af';
+  if (max === Infinity) return null;
+  return (
+    <span style={{ fontSize: 10, color, float: 'right', marginTop: 2 }}>
+      {len}/{max}
+    </span>
+  );
+}
+
+// Inline validation message
+function FieldError({ msg }) {
+  if (!msg) return null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, color: '#ef4444', fontSize: 11 }}>
+      <span style={{ fontSize: 14 }}>&bull;</span> {msg}
+    </div>
+  );
+}
+
 const emptyLink = () => ({ title: '', url: '' });
 const emptySection = () => ({ title: '', links: [emptyLink()] });
 const emptySocial = () => ({ platform: 'facebook', url: '' });
@@ -116,6 +163,50 @@ export default function FooterConfig() {
   }, [sections, content, socialMedia, bottomLinks, copyright]);
 
   const handleSave = async () => {
+    const errors = [];
+    
+    // Validate Sections
+    sections.forEach((s, si) => {
+      if (!s.title?.trim()) errors.push(`Section #${si + 1} title is required`);
+      else if (s.title.length > LIMITS.sectionTitle) errors.push(`Section #${si + 1} title too long`);
+      
+      s.links.forEach((l, li) => {
+        if (!l.title?.trim()) errors.push(`Section #${si + 1}, Link #${li + 1} title is required`);
+        else if (l.title.length > LIMITS.linkTitle) errors.push(`Section #${si + 1}, Link #${li + 1} title too long`);
+        
+        if (!l.url?.trim()) errors.push(`Section #${si + 1}, Link #${li + 1} URL is required`);
+        else if (l.url.length > LIMITS.linkUrl) errors.push(`Section #${si + 1}, Link #${li + 1} URL too long`);
+        else if (!isValidUrl(l.url)) errors.push(`Section #${si + 1}, Link #${li + 1} has an invalid URL`);
+      });
+    });
+
+    // Validate Content
+    if (content.title?.length > LIMITS.contentTitle) errors.push('Disclaimer title too long');
+    if (content.description?.length > LIMITS.contentDescription) errors.push('Disclaimer description too long');
+
+    // Validate Social
+    socialMedia.forEach((sm, i) => {
+      if (!sm.url?.trim()) errors.push(`Social #${i + 1} URL is required`);
+      else if (sm.url.length > LIMITS.socialUrl) errors.push(`Social #${i + 1} URL too long`);
+      else if (!isValidUrl(sm.url)) errors.push(`Social #${i + 1} has an invalid URL`);
+    });
+
+    // Validate Bottom
+    if (copyright?.length > LIMITS.copyright) errors.push('Copyright text too long');
+    bottomLinks.forEach((l, i) => {
+      if (!l.title?.trim()) errors.push(`Bottom Link #${i + 1} title is required`);
+      else if (l.title.length > LIMITS.bottomLinkTitle) errors.push(`Bottom Link #${i + 1} title too long`);
+      
+      if (!l.url?.trim()) errors.push(`Bottom Link #${i + 1} URL is required`);
+      else if (l.url.length > LIMITS.bottomLinkUrl) errors.push(`Bottom Link #${i + 1} URL too long`);
+      else if (!isValidUrl(l.url)) errors.push(`Bottom Link #${i + 1} has an invalid URL`);
+    });
+
+    if (errors.length > 0) {
+      toast.error(errors[0]);
+      return;
+    }
+
     setSaving(true);
     try {
       await configAPI.updateFooter({
@@ -136,8 +227,8 @@ export default function FooterConfig() {
       setDirty(false);
     } catch (err) {
       const msg = err.response?.data?.message || 'Failed to save';
-      const errors = err.response?.data?.errors;
-      toast.error(errors ? errors.join('\n') : msg);
+      const backendErrors = err.response?.data?.errors;
+      toast.error(backendErrors ? backendErrors.join('\n') : msg);
     } finally {
       setSaving(false);
     }
@@ -269,11 +360,15 @@ export default function FooterConfig() {
                   {!collapsed[si] && (
                     <div className="fc-section-body">
                       <div className="form-group">
-                        <label className="form-label">Section Title</label>
+                        <label className="form-label">
+                          Section Title
+                          <CharCount value={section.title} max={LIMITS.sectionTitle} />
+                        </label>
                         <input
                           className="form-input"
                           placeholder="e.g. Quick Links, Resources"
                           value={section.title}
+                          maxLength={LIMITS.sectionTitle}
                           onChange={e => updateSection(si, 'title', e.target.value)}
                         />
                       </div>
@@ -289,12 +384,14 @@ export default function FooterConfig() {
                             className="form-input"
                             placeholder="Link title"
                             value={link.title}
+                            maxLength={LIMITS.linkTitle}
                             onChange={e => updateLink(si, li, 'title', e.target.value)}
                           />
                           <input
                             className="form-input"
                             placeholder="https://example.com"
                             value={link.url}
+                            maxLength={LIMITS.linkUrl}
                             onChange={e => updateLink(si, li, 'url', e.target.value)}
                           />
                           <button className="fc-link-delete" onClick={() => removeLink(si, li)}>
@@ -340,11 +437,15 @@ export default function FooterConfig() {
               </div>
               <div className="fc-content-card-body">
                 <div className="form-group">
-                  <label className="form-label">Title</label>
+                  <label className="form-label">
+                    Title
+                    <CharCount value={content.title} max={LIMITS.contentTitle} />
+                  </label>
                   <input
                     className="form-input"
                     placeholder="e.g. Disclaimer, About Us"
                     value={content.title}
+                    maxLength={LIMITS.contentTitle}
                     onChange={e => setContent({ ...content, title: e.target.value })}
                   />
                 </div>
@@ -356,10 +457,10 @@ export default function FooterConfig() {
                     placeholder="Enter description or disclaimer text that will appear in the footer…"
                     value={content.description}
                     onChange={e => setContent({ ...content, description: e.target.value })}
-                    maxLength={500}
+                    maxLength={LIMITS.contentDescription}
                   />
                   <div className="fc-char-counter">
-                    {content.description?.length || 0}/500
+                    {content.description?.length || 0}/{LIMITS.contentDescription}
                   </div>
                 </div>
               </div>
@@ -404,6 +505,7 @@ export default function FooterConfig() {
                       className="form-input"
                       placeholder="https://..."
                       value={sm.url}
+                      maxLength={LIMITS.socialUrl}
                       onChange={e => updateSocial(i, 'url', e.target.value)}
                       style={{ flex: 1 }}
                     />
@@ -426,10 +528,15 @@ export default function FooterConfig() {
                 </div>
                 <div className="fc-content-card-body">
                   <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">
+                      Text
+                      <CharCount value={copyright} max={LIMITS.copyright} />
+                    </label>
                     <input
                       className="form-input"
                       placeholder="Copyright © 2026 Company Name. All Rights Reserved."
                       value={copyright}
+                      maxLength={LIMITS.copyright}
                       onChange={e => setCopyright(e.target.value)}
                     />
                   </div>
@@ -460,12 +567,14 @@ export default function FooterConfig() {
                         className="form-input"
                         placeholder="Link title (e.g. Privacy Policy)"
                         value={link.title}
+                        maxLength={LIMITS.bottomLinkTitle}
                         onChange={e => updateBottomLink(i, 'title', e.target.value)}
                       />
                       <input
                         className="form-input"
                         placeholder="https://..."
                         value={link.url}
+                        maxLength={LIMITS.bottomLinkUrl}
                         onChange={e => updateBottomLink(i, 'url', e.target.value)}
                       />
                       <button className="fc-link-delete" onClick={() => removeBottomLink(i)}>

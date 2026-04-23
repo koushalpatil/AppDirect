@@ -4,12 +4,42 @@ import toast from 'react-hot-toast';
 import { Plus, Edit3, Trash2, FolderTree, X } from 'lucide-react';
 import './Admin.css';
 
+const LIMITS = {
+  name: { min: 2, max: 100 },
+  description: { max: 500 },
+  option: { max: 100 },
+  maxOptions: 50,
+};
+
+// Character counter helper
+function CharCount({ value, max, warn = 0.85 }) {
+  const len = (value || '').length;
+  const ratio = len / max;
+  const color = ratio >= 1 ? '#ef4444' : ratio >= warn ? '#f59e0b' : '#9ca3af';
+  return (
+    <span style={{ fontSize: 11, color, float: 'right', marginTop: 2 }}>
+      {len}/{max}
+    </span>
+  );
+}
+
+// Inline validation message
+function FieldError({ msg }) {
+  if (!msg) return null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, color: '#ef4444', fontSize: 12 }}>
+      <span style={{ fontSize: 14 }}>&bull;</span> {msg}
+    </div>
+  );
+}
+
 export default function CatalogManagement() {
   const [attributes, setAttributes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [optionInput, setOptionInput] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const [form, setForm] = useState({
     name: '', description: '',
@@ -44,6 +74,7 @@ export default function CatalogManagement() {
     });
     setEditing(null);
     setOptionInput('');
+    setFieldErrors({});
   };
 
   const openCreate = () => { resetForm(); setModalOpen(true); };
@@ -64,10 +95,13 @@ export default function CatalogManagement() {
 
   const addOption = () => {
     const o = optionInput.trim();
-    if (o && !form.options.includes(o)) {
-      setForm(prev => ({ ...prev, options: [...prev.options, o] }));
-      setOptionInput('');
-    }
+    if (!o) return;
+    if (o.length > LIMITS.option.max) return toast.error(`Option too long (max ${LIMITS.option.max} chars)`);
+    if (form.options.length >= LIMITS.maxOptions) return toast.error(`Maximum ${LIMITS.maxOptions} options allowed`);
+    if (form.options.includes(o)) return toast.error('Option already exists');
+    
+    setForm(prev => ({ ...prev, options: [...prev.options, o] }));
+    setOptionInput('');
   };
 
   const removeOption = (opt) => {
@@ -75,15 +109,26 @@ export default function CatalogManagement() {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim()) return toast.error('Attribute name is required');
-    
+    const name = form.name.trim();
+    const errors = {};
+    if (!name) errors.name = 'Attribute name is required';
+    else if (name.length < LIMITS.name.min) errors.name = `Name must be at least ${LIMITS.name.min} characters`;
+    else if (name.length > LIMITS.name.max) errors.name = `Name must be under ${LIMITS.name.max} characters`;
+
+    if (form.description && form.description.length > LIMITS.description.max) {
+      errors.description = `Description too long (max ${LIMITS.description.max} characters)`;
+    }
+
     if (form.similarity.useInSimilarity) {
-      if (form.similarity.weight === '' || isNaN(form.similarity.weight)) {
-        return toast.error('Similarity weight is required');
-      }
-      if (form.similarity.weight < 0 || form.similarity.weight > 10) {
-        return toast.error('Similarity weight must be between 0 and 10');
-      }
+      const w = form.similarity.weight;
+      if (w === '' || isNaN(w)) errors.weight = 'Weight is required';
+      else if (w < 0 || w > 10) errors.weight = 'Weight must be 0-10';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      toast.error('Please fix the errors in the form');
+      return;
     }
 
     try {
@@ -193,12 +238,41 @@ export default function CatalogManagement() {
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">Name <span className="required">*</span></label>
-                <input type="text" className="form-input" placeholder="e.g. Geography, Platform" value={form.name} onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))} autoFocus />
+                <label className="form-label">
+                  Name <span className="required">*</span>
+                  <CharCount value={form.name} max={LIMITS.name.max} />
+                </label>
+                <input 
+                  type="text" 
+                  className={`form-input ${fieldErrors.name ? 'form-input-error' : ''}`} 
+                  placeholder="e.g. Geography, Platform" 
+                  value={form.name} 
+                  maxLength={LIMITS.name.max}
+                  onChange={(e) => {
+                    setForm(prev => ({ ...prev, name: e.target.value }));
+                    setFieldErrors(prev => ({ ...prev, name: null }));
+                  }} 
+                  autoFocus 
+                />
+                <FieldError msg={fieldErrors.name} />
               </div>
               <div className="form-group">
-                <label className="form-label">Description</label>
-                <textarea className="form-textarea" placeholder="Describe this attribute" value={form.description} onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))} style={{ minHeight: 70 }} />
+                <label className="form-label">
+                  Description
+                  <CharCount value={form.description} max={LIMITS.description.max} />
+                </label>
+                <textarea 
+                  className={`form-textarea ${fieldErrors.description ? 'form-input-error' : ''}`} 
+                  placeholder="Describe this attribute" 
+                  value={form.description} 
+                  maxLength={LIMITS.description.max}
+                  onChange={(e) => {
+                    setForm(prev => ({ ...prev, description: e.target.value }));
+                    setFieldErrors(prev => ({ ...prev, description: null }));
+                  }} 
+                  style={{ minHeight: 70 }} 
+                />
+                <FieldError msg={fieldErrors.description} />
               </div>
 
               <div className="toggle-wrapper">
@@ -227,7 +301,7 @@ export default function CatalogManagement() {
                       <label className="form-label">Weight (0-10)</label>
                       <input 
                         type="number" 
-                        className="form-input" 
+                        className={`form-input ${fieldErrors.weight ? 'form-input-error' : ''}`} 
                         min="0" 
                         max="10" 
                         step="0.5" 
@@ -241,8 +315,10 @@ export default function CatalogManagement() {
                               weight: val === '' ? '' : Number(val) 
                             } 
                           }));
+                          setFieldErrors(prev => ({ ...prev, weight: null }));
                         }} 
                       />
+                      <FieldError msg={fieldErrors.weight} />
                     </div>
                     <div className="form-group mb-0">
                       <label className="form-label">Match Type</label>
@@ -259,7 +335,7 @@ export default function CatalogManagement() {
               <div className="form-group mt-md">
                 <label className="form-label">Options</label>
                 <div className="option-input-row">
-                  <input type="text" className="form-input" placeholder="Add option value" value={optionInput} onChange={(e) => setOptionInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOption())} />
+                  <input type="text" className="form-input" placeholder="Add option value" value={optionInput} maxLength={LIMITS.option.max} onChange={(e) => setOptionInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOption())} />
                   <button type="button" className="btn btn-secondary" onClick={addOption}>Add</button>
                 </div>
                 <div className="flex gap-sm flex-wrap mt-sm">

@@ -5,20 +5,35 @@ import toast from 'react-hot-toast';
 import { Eye, EyeOff } from 'lucide-react';
 import './Auth.css';
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const validate = () => {
+    const e = {};
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) e.email = 'Email is required.';
+    else if (!EMAIL_RE.test(trimmedEmail)) e.email = 'Please enter a valid email address.';
+    if (!password) e.password = 'Password is required.';
+    else if (password.length < 6) e.password = 'Password must be at least 6 characters.';
+    return e;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) return toast.error('Please fill all fields');
+    const v = validate();
+    setErrors(v);
+    if (Object.keys(v).length > 0) return toast.error(Object.values(v)[0]);
     setLoading(true);
     try {
-      const user = await login(email, password);
+      const user = await login(email.trim(), password);
       toast.success(`Welcome back, ${user.firstName}!`);
       navigate(user.role === 'admin' ? '/admin' : '/');
     } catch (err) {
@@ -41,17 +56,19 @@ export default function Login() {
           <p>Sign in to your account to continue</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="auth-form">
+        <form onSubmit={handleSubmit} className="auth-form" noValidate>
           <div className="form-group">
             <label className="form-label">Email <span className="required">*</span></label>
             <input
               type="email"
-              className="form-input"
+              className={`form-input ${errors.email ? 'form-input-error' : ''}`}
               placeholder="you@company.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
+              onChange={(e) => { setEmail(e.target.value); setErrors(prev => ({ ...prev, email: undefined })); }}
+              maxLength={254}
+              autoComplete="email"
             />
+            {errors.email && <span className="form-error">{errors.email}</span>}
           </div>
 
           <div className="form-group">
@@ -59,16 +76,18 @@ export default function Login() {
             <div className="input-with-icon">
               <input
                 type={showPw ? 'text' : 'password'}
-                className="form-input"
+                className={`form-input ${errors.password ? 'form-input-error' : ''}`}
                 placeholder="Enter your password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
+                onChange={(e) => { setPassword(e.target.value); setErrors(prev => ({ ...prev, password: undefined })); }}
+                maxLength={128}
+                autoComplete="current-password"
               />
               <button type="button" className="input-icon-btn" onClick={() => setShowPw(!showPw)}>
                 {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
+            {errors.password && <span className="form-error">{errors.password}</span>}
           </div>
 
           <button type="submit" className="btn btn-primary btn-lg auth-submit" disabled={loading}>

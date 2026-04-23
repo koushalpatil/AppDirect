@@ -285,6 +285,7 @@ export default function PublicLayout() {
                 placeholder="Search Products"
                 value={searchQuery}
                 onChange={handleSearchChange}
+                maxLength={100}
                 onFocus={() => {
                   if (suggestions.length > 0) setShowSuggestions(true);
                 }}

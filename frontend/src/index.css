@@ -710,6 +710,68 @@ input, textarea, select, button {
   .grid-2, .grid-3, .grid-4 {
     grid-template-columns: 1fr;
   }
+
+  .stepper {
+    gap: 0;
+  }
+
+  .step-label {
+    display: none;
+  }
+
+  .step-number {
+    width: 28px;
+    height: 28px;
+    font-size: var(--font-size-xs);
+  }
+
+  .modal {
+    max-width: calc(100vw - 32px);
+  }
+
+  .modal-header,
+  .modal-body,
+  .modal-footer {
+    padding: var(--space-md);
+  }
+
+  .modal-footer {
+    flex-direction: column;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --font-size-4xl: 1.75rem;
+    --font-size-5xl: 2.25rem;
+    --font-size-3xl: 1.5rem;
+    --space-2xl: 32px;
+    --space-3xl: 48px;
+  }
+
+  .btn-lg {
+    padding: 12px 20px;
+    font-size: var(--font-size-sm);
+  }
+
+  .form-input,
+  .form-textarea,
+  .form-select {
+    font-size: var(--font-size-sm);
+    padding: 8px 12px;
+  }
+
+  .card-body {
+    padding: var(--space-md);
+  }
+
+  .glass-card {
+    padding: var(--space-md);
+  }
 }
 
 /* ============ LOADING SKELETON ============ */

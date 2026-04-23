@@ -367,3 +367,56 @@
   color: var(--color-accent);
   font-weight: 500;
 }
+
+/* ============ RESPONSIVE — FOOTER CONFIG ============ */
+
+@media (max-width: 768px) {
+  .fc-tabs {
+    flex-wrap: wrap;
+  }
+
+  .fc-tab {
+    flex: 0 0 calc(50% - 2px);
+    font-size: var(--font-size-xs);
+    padding: 10px 12px;
+  }
+
+  .fc-link-row {
+    flex-wrap: wrap;
+  }
+
+  .fc-link-row .form-input {
+    min-width: 0;
+  }
+
+  .fc-social-row {
+    flex-wrap: wrap;
+  }
+
+  .fc-social-select {
+    width: 100%;
+  }
+
+  .fc-section-header {
+    padding: var(--space-sm) var(--space-md);
+  }
+
+  .fc-section-body {
+    padding: var(--space-md);
+  }
+
+  .fc-bottom-body {
+    padding: var(--space-md);
+  }
+}
+
+@media (max-width: 480px) {
+  .fc-tab {
+    flex: 0 0 100%;
+    justify-content: flex-start;
+  }
+
+  .fc-section-label {
+    font-size: var(--font-size-xs);
+  }
+}

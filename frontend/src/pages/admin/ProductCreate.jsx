@@ -88,6 +88,26 @@ export default function ProductCreate() {
   const setFieldError = (field, msg) =>
     setFieldErrors(prev => ({ ...prev, [field]: msg }));
 
+  // ── Real-time inline field validation (called on blur) ─────────────────────
+  const validateField = (field, value) => {
+    const v = typeof value === 'string' ? value.trim() : value;
+    switch (field) {
+      case 'name':
+        if (!v) return setFieldError('name', 'Product name is required');
+        if (v.length < LIMITS.name.min) return setFieldError('name', `Name must be at least ${LIMITS.name.min} characters`);
+        if (v.length > LIMITS.name.max) return setFieldError('name', `Name must be under ${LIMITS.name.max} characters`);
+        return setFieldError('name', null);
+      case 'tagline':
+        if (v && v.length > LIMITS.tagline.max) return setFieldError('tagline', `Tagline must be under ${LIMITS.tagline.max} characters`);
+        return setFieldError('tagline', null);
+      case 'developerName':
+        if (v && v.length > LIMITS.developerName.max) return setFieldError('developerName', `Developer name must be under ${LIMITS.developerName.max} characters`);
+        return setFieldError('developerName', null);
+      default:
+        return setFieldError(field, null);
+    }
+  };
+
   // ── Tag management ──────────────────────────────────────────────────────────
   const addTag = () => {
     const t = tagInput.trim();
@@ -360,25 +380,59 @@ export default function ProductCreate() {
 
   // ── Save ────────────────────────────────────────────────────────────────────
   const handleSave = async (status) => {
-    const formErrors = validateProductForm(form);
-    if (formErrors.length > 0) {
-      formErrors.forEach(err => toast.error(err));
-      return;
-    }
-
-    // Check required attributes
-    const requiredAttrs = attributes.filter(a => a.requiredInProductEditor);
-    for (const attr of requiredAttrs) {
-      const formAttr = form.attributes.find(a => a.attributeId === attr._id);
-      if (!formAttr || formAttr.values.length === 0) {
-        toast.error(`"${attr.name}" attribute is required`);
+    // For drafts: only require product name
+    // For publish: run full validation
+    if (status === 'published') {
+      const formErrors = validateProductForm(form);
+      if (formErrors.length > 0) {
+        formErrors.forEach(err => toast.error(err));
+        return;
+      }
+      // Check required attributes only when publishing
+      const requiredAttrs = attributes.filter(a => a.requiredInProductEditor);
+      for (const attr of requiredAttrs) {
+        const formAttr = form.attributes.find(a => a.attributeId === attr._id);
+        if (!formAttr || formAttr.values.length === 0) {
+          toast.error(`"${attr.name}" attribute is required to publish`);
+          return;
+        }
+      }
+    } else {
+      // Draft: only name is required
+      const name = (form.name || '').trim();
+      if (!name) {
+        toast.error('Product name is required to save a draft');
         return;
       }
     }
 
+    // Filter out empty sub-document items to prevent Mongoose required field errors
+    const cleanOverview = (form.overview || []).filter(
+      item => (item.title || '').trim() || (item.description || '').trim()
+    );
+    const cleanFeatures = (form.features || []).filter(
+      item => (item.title || '').trim() || (item.description || '').trim()
+    );
+    const cleanCustomTabs = (form.customTabs || []).filter(
+      tab => (tab.tabName || '').trim()
+    ).map(tab => ({
+      ...tab,
+      elements: (tab.elements || []).filter(
+        el => (el.title || '').trim() || (el.description || '').trim()
+      ),
+    }));
+
+    const payload = {
+      ...form,
+      overview: cleanOverview,
+      features: cleanFeatures,
+      customTabs: cleanCustomTabs,
+      status,
+    };
+
     setSaving(true);
     try {
-      await productAPI.create({ ...form, status });
+      await productAPI.create(payload);
       toast.success(status === 'published' ? 'Product published!' : 'Draft saved!');
       navigate('/admin/products');
     } catch (err) {
@@ -597,6 +651,46 @@ export default function ProductCreate() {
         ))}
       </div>
 
+      {/* Navigation Controls (Top) */}
+      <div className="wizard-controls">
+        <button
+          className="btn btn-secondary btn-sm"
+          disabled={step === 0}
+          onClick={() => setStep(s => s - 1)}
+          style={{ minWidth: '100px' }}
+        >
+          ← Previous
+        </button>
+        <div className="flex gap-sm">
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={() => handleSave('draft')}
+            disabled={saving}
+          >
+            {saving ? 'Saving...' : 'Save as Draft'}
+          </button>
+          
+          {step === STEPS.length - 1 ? (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => handleSave('published')}
+              disabled={saving}
+              style={{ minWidth: '100px' }}
+            >
+              {saving ? 'Publishing...' : 'Publish Product'}
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => validateStep() && setStep(s => s + 1)}
+              style={{ minWidth: '100px' }}
+            >
+              Next Step →
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* ── Step 1: Define Product ─────────────────────────────────────────── */}
       {step === 0 && (
         <div className="wizard-content card card-body">
@@ -611,11 +705,12 @@ export default function ProductCreate() {
               </label>
               <input
                 type="text"
-                className="form-input"
+                className={`form-input ${fieldErrors.name ? 'form-input-error' : ''}`}
                 placeholder="Enter product name (2–100 characters)"
                 maxLength={LIMITS.name.max}
                 value={form.name}
                 onChange={(e) => update('name', e.target.value)}
+                onBlur={(e) => validateField('name', e.target.value)}
                 autoFocus
               />
               <FieldError msg={fieldErrors.name} />
@@ -632,12 +727,14 @@ export default function ProductCreate() {
               </label>
               <input
                 type="text"
-                className="form-input"
+                className={`form-input ${fieldErrors.tagline ? 'form-input-error' : ''}`}
                 placeholder="Short product description"
                 maxLength={LIMITS.tagline.max}
                 value={form.tagline}
                 onChange={(e) => update('tagline', e.target.value)}
+                onBlur={(e) => validateField('tagline', e.target.value)}
               />
+              <FieldError msg={fieldErrors.tagline} />
               <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>
                 Optional · Max {LIMITS.tagline.max} characters
               </div>
@@ -691,12 +788,14 @@ export default function ProductCreate() {
               </label>
               <input
                 type="text"
-                className="form-input"
+                className={`form-input ${fieldErrors.developerName ? 'form-input-error' : ''}`}
                 placeholder="Developer or company name"
                 maxLength={LIMITS.developerName.max}
                 value={form.developerName}
                 onChange={(e) => update('developerName', e.target.value)}
+                onBlur={(e) => validateField('developerName', e.target.value)}
               />
+              <FieldError msg={fieldErrors.developerName} />
             </div>
 
             {/* Tags */}
@@ -1121,43 +1220,7 @@ export default function ProductCreate() {
         </div>
       )}
 
-      {/* Footer */}
-      <div className="wizard-footer">
-        <button
-          className="btn btn-secondary"
-          disabled={step === 0}
-          onClick={() => setStep(s => s - 1)}
-        >
-          Previous
-        </button>
-        <div className="flex gap-sm">
-          {step === STEPS.length - 1 ? (
-            <>
-              <button
-                className="btn btn-secondary"
-                onClick={() => handleSave('draft')}
-                disabled={saving}
-              >
-                {saving ? 'Saving…' : 'Save as Draft'}
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => handleSave('published')}
-                disabled={saving}
-              >
-                {saving ? 'Publishing…' : 'Publish'}
-              </button>
-            </>
-          ) : (
-            <button
-              className="btn btn-primary"
-              onClick={() => validateStep() && setStep(s => s + 1)}
-            >
-              Next
-            </button>
-          )}
-        </div>
-      </div>
+
     </div>
   );
 }

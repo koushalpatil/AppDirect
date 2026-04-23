@@ -15,6 +15,97 @@ const sanitizeContactFields = (fields, useCustom) => {
   }));
 };
 
+const LIMITS = {
+  name: { min: 2, max: 100 },
+  tagline: { max: 150 },
+  developerName: { max: 100 },
+  tag: { max: 30 },
+  maxTags: 20,
+  overviewTitle: { max: 100 },
+  overviewDescription: { max: 5000 },
+  featureTitle: { max: 100 },
+  featureDescription: { max: 5000 },
+  supportDescription: { max: 3000 },
+  policies: { max: 5000 },
+  maxCustomTabs: 5,
+  customTabName: { min: 2, max: 50 },
+  maxCustomTabElements: 10,
+  customTabElementTitle: { max: 100 },
+  customTabElementDescription: { max: 5000 },
+};
+
+const sanitizeString = (str, maxLen) => {
+  if (typeof str !== 'string') return '';
+  return str.trim().slice(0, maxLen);
+};
+
+/**
+ * Validate product payload. Returns array of error strings.
+ * @param {Object} data - The request body
+ * @param {string} targetStatus - 'draft' or 'published'
+ */
+const validateProductPayload = (data, targetStatus) => {
+  const errors = [];
+  const name = (data.name || '').trim();
+
+  // Name is always required
+  if (!name) {
+    errors.push('Product name is required.');
+  } else if (name.length < LIMITS.name.min) {
+    errors.push(`Product name must be at least ${LIMITS.name.min} characters.`);
+  } else if (name.length > LIMITS.name.max) {
+    errors.push(`Product name must be under ${LIMITS.name.max} characters.`);
+  }
+
+  // For drafts, only the name is strictly required
+  if (targetStatus === 'draft') return errors;
+
+  // ── Publishing validation ──
+  if (data.tagline && data.tagline.length > LIMITS.tagline.max) {
+    errors.push(`Tagline must be under ${LIMITS.tagline.max} characters.`);
+  }
+  if (data.developerName && data.developerName.length > LIMITS.developerName.max) {
+    errors.push(`Developer name must be under ${LIMITS.developerName.max} characters.`);
+  }
+  if (Array.isArray(data.tags)) {
+    if (data.tags.length > LIMITS.maxTags) errors.push(`Maximum ${LIMITS.maxTags} tags allowed.`);
+    data.tags.forEach((t, i) => {
+      if (typeof t === 'string' && t.length > LIMITS.tag.max) {
+        errors.push(`Tag #${i + 1} must be under ${LIMITS.tag.max} characters.`);
+      }
+    });
+  }
+  (data.overview || []).forEach((item, i) => {
+    if (item.title && item.title.length > LIMITS.overviewTitle.max) errors.push(`Overview #${i + 1} title too long.`);
+    if (item.description && item.description.length > LIMITS.overviewDescription.max) errors.push(`Overview #${i + 1} description too long.`);
+  });
+  (data.features || []).forEach((item, i) => {
+    if (item.title && item.title.length > LIMITS.featureTitle.max) errors.push(`Feature #${i + 1} title too long.`);
+    if (item.description && item.description.length > LIMITS.featureDescription.max) errors.push(`Feature #${i + 1} description too long.`);
+  });
+  if (data.supportDescription && data.supportDescription.length > LIMITS.supportDescription.max) {
+    errors.push(`Support description must be under ${LIMITS.supportDescription.max} characters.`);
+  }
+  if (data.policies && data.policies.length > LIMITS.policies.max) {
+    errors.push(`Policies must be under ${LIMITS.policies.max} characters.`);
+  }
+  const customTabs = data.customTabs || [];
+  if (customTabs.length > LIMITS.maxCustomTabs) errors.push(`Maximum ${LIMITS.maxCustomTabs} custom tabs allowed.`);
+  customTabs.forEach((tab, ti) => {
+    const tn = (tab.tabName || '').trim();
+    if (!tn) errors.push(`Custom tab #${ti + 1} name is required.`);
+    else if (tn.length > LIMITS.customTabName.max) errors.push(`Custom tab #${ti + 1} name too long.`);
+    const els = tab.elements || [];
+    if (els.length > LIMITS.maxCustomTabElements) errors.push(`Custom tab "${tn}" has too many elements.`);
+    els.forEach((el, ei) => {
+      if (el.title && el.title.length > LIMITS.customTabElementTitle.max) errors.push(`Tab "${tn}" element #${ei + 1} title too long.`);
+      if (el.description && el.description.length > LIMITS.customTabElementDescription.max) errors.push(`Tab "${tn}" element #${ei + 1} description too long.`);
+    });
+  });
+
+  return errors;
+};
+
 // Create a new product (draft or published)
 exports.createProduct = async (req, res) => {
   try {
@@ -25,26 +116,28 @@ exports.createProduct = async (req, res) => {
       useCustomContactForm, contactFields, status,
     } = req.body;
 
-    if (!name || !name.trim()) {
-      return res.status(400).json({ message: 'Product name is required.' });
+    const targetStatus = status || 'draft';
+    const validationErrors = validateProductPayload(req.body, targetStatus);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ message: validationErrors[0], errors: validationErrors });
     }
 
     const product = await Product.create({
-      name: name.trim(),
-      tagline,
-      developerName,
+      name: sanitizeString(name, LIMITS.name.max),
+      tagline: sanitizeString(tagline, LIMITS.tagline.max),
+      developerName: sanitizeString(developerName, LIMITS.developerName.max),
       logo,
-      tags: tags || [],
+      tags: (tags || []).map(t => sanitizeString(t, LIMITS.tag.max)).filter(Boolean),
       overview: overview || [],
       features: features || [],
       customTabs: customTabs || [],
       attributes: attributes || [],
-      supportDescription,
-      policies,
+      supportDescription: sanitizeString(supportDescription, LIMITS.supportDescription.max),
+      policies: sanitizeString(policies, LIMITS.policies.max),
       resources: resources || [],
       useCustomContactForm: !!useCustomContactForm,
       contactFields: sanitizeContactFields(contactFields, useCustomContactForm),
-      status: status || 'draft',
+      status: targetStatus,
       createdBy: req.user._id,
       updatedBy: req.user._id,
     });
@@ -60,6 +153,10 @@ exports.createProduct = async (req, res) => {
     res.status(201).json({ message: 'Product created successfully.', product });
   } catch (error) {
     console.error('Create product error:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(e => e.message);
+      return res.status(400).json({ message: messages[0], errors: messages });
+    }
     res.status(500).json({ message: 'Failed to create product.' });
   }
 };
@@ -91,6 +188,7 @@ exports.getProducts = async (req, res) => {
     const total = await Product.countDocuments(filter);
     const products = await Product.find(filter)
       .populate('createdBy', 'firstName lastName')
+      .populate('updatedBy', 'firstName lastName')
       .sort({ updatedAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -133,6 +231,14 @@ exports.updateProduct = async (req, res) => {
     const product = await Product.findById(req.params.id);
     if (!product) {
       return res.status(404).json({ message: 'Product not found.' });
+    }
+
+    // Validate the incoming payload
+    const targetStatus = req.body.status || product.status;
+    const mergedPayload = { ...product.toObject(), ...req.body };
+    const validationErrors = validateProductPayload(mergedPayload, targetStatus);
+    if (validationErrors.length > 0) {
+      return res.status(400).json({ message: validationErrors[0], errors: validationErrors });
     }
 
     // Capture previous values for edit log
