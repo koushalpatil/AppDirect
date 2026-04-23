@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Package, FolderTree, FileText, Settings, LogOut, Home, ChevronRight, Zap, PanelBottom, Menu, X
 } from 'lucide-react';
+import dbLogo from '../assets/dblogo1.webp';
 import './AdminLayout.css';
 
 export default function AdminLayout() {
@@ -42,10 +43,9 @@ export default function AdminLayout() {
 
       <aside className={`admin-sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
-          <div className="sidebar-logo">
-            <div className="logo-icon">A</div>
-            <span className="logo-text">AppDirect</span>
-          </div>
+          <NavLink to="/admin" className="sidebar-logo">
+            <img src={dbLogo} alt="Logo" className="logo-img" />
+          </NavLink>
           <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">
             <X size={20} />
           </button>
