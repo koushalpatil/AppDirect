@@ -22,7 +22,7 @@ const contactFieldSchema = new mongoose.Schema({
   label: { type: String, required: true },
   type: {
     type: String,
-    enum: ['text', 'textarea', 'email', 'number', 'select', 'radio', 'checkbox', 'date', 'file', 'tel'],
+    enum: ['text', 'textarea', 'email', 'url', 'number', 'select', 'radio', 'checkbox', 'date', 'file', 'tel'],
     default: 'text',
   },
   required: { type: Boolean, default: false },
@@ -44,10 +44,40 @@ const homepageCategorySchema = new mongoose.Schema({
   order: { type: Number, default: 0 },
 }, { _id: true });
 
+// ─── Footer Schemas ───
+const footerLinkSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  url: { type: String, required: true, trim: true },
+}, { _id: false });
+
+const footerSectionSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  links: { type: [footerLinkSchema], default: [], validate: [v => v.length <= 7, 'Max 7 links per section'] },
+}, { _id: true });
+
+const footerContentSchema = new mongoose.Schema({
+  title: { type: String, trim: true, default: '' },
+  description: { type: String, trim: true, default: '' },
+}, { _id: false });
+
+const socialMediaSchema = new mongoose.Schema({
+  platform: {
+    type: String,
+    enum: ['facebook', 'x', 'instagram', 'linkedin', 'youtube'],
+    required: true,
+  },
+  url: { type: String, required: true, trim: true },
+}, { _id: false });
+
+const bottomFooterLinkSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  url: { type: String, required: true, trim: true },
+}, { _id: false });
+
 const contentConfigSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['contact_form', 'homepage', 'similarity_settings'],
+    enum: ['contact_form', 'homepage', 'similarity_settings', 'footer'],
     required: true,
     unique: true,
   },
@@ -64,6 +94,13 @@ const contentConfigSchema = new mongoose.Schema({
   minSimilarityScore: { type: Number, default: 0.2, min: 0, max: 1 },
   maxResults: { type: Number, default: 5, min: 1, max: 20 },
   fallbackAttributeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Attribute' },
+
+  // Footer config
+  footerSections: { type: [footerSectionSchema], default: [], validate: [v => v.length <= 2, 'Max 2 footer sections'] },
+  footerContent: { type: footerContentSchema, default: () => ({}) },
+  socialMedia: { type: [socialMediaSchema], default: [] },
+  bottomFooterLinks: { type: [bottomFooterLinkSchema], default: [] },
+  bottomFooterCopyright: { type: String, default: '', trim: true },
 
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });

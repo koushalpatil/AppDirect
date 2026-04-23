@@ -78,6 +78,10 @@ export const configAPI = {
   getPublicHomepage: () => api.get('/config/public/homepage'),
   getPublicContactForm: () => api.get('/config/public/contact-form'),
   submitPublicContactForm: (data) => api.post('/config/public/contact-form/submit', data),
+  // Footer
+  getFooter: () => api.get('/config/footer'),
+  updateFooter: (data) => api.put('/config/footer', data),
+  getPublicFooter: () => api.get('/config/public/footer'),
 };
 
 // Upload

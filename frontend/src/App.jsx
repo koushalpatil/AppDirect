@@ -19,6 +19,7 @@ import CatalogManagement from './pages/admin/CatalogManagement';
 import ContactFormConfig from './pages/admin/ContactFormConfig';
 import HomepageConfig from './pages/admin/HomepageConfig';
 import SimilaritySettings from './pages/admin/SimilaritySettings';
+import FooterConfig from './pages/admin/FooterConfig';
 
 // Public pages
 import HomePage from './pages/public/HomePage';
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="config/contact" element={<ContactFormConfig />} />
         <Route path="config/homepage" element={<HomepageConfig />} />
         <Route path="config/similarity" element={<SimilaritySettings />} />
+        <Route path="config/footer" element={<FooterConfig />} />
       </Route>
 
       {/* Public */}

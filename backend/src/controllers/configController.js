@@ -566,3 +566,117 @@ exports.updateSimilarityConfig = async (req, res) => {
     res.status(500).json({ message: 'Failed to update similarity settings.' });
   }
 };
+
+// ─── Footer Config ───────────────────────────────────────────────────────────
+
+const VALID_PLATFORMS = new Set(['facebook', 'x', 'instagram', 'linkedin', 'youtube']);
+
+// Admin: Get footer config
+exports.getFooterConfig = async (req, res) => {
+  try {
+    let config = await ContentConfig.findOne({ type: 'footer' });
+    if (!config) {
+      config = await ContentConfig.create({
+        type: 'footer',
+        footerSections: [],
+        footerContent: { title: '', description: '' },
+        socialMedia: [],
+        bottomFooterLinks: [],
+        bottomFooterCopyright: '',
+      });
+    }
+    res.json({ config });
+  } catch (error) {
+    console.error('Get footer config error:', error);
+    res.status(500).json({ message: 'Failed to retrieve footer configuration.' });
+  }
+};
+
+// Admin: Update footer config
+exports.updateFooterConfig = async (req, res) => {
+  try {
+    const { footerSections, footerContent, socialMedia, bottomFooterLinks, bottomFooterCopyright } = req.body;
+    const errors = [];
+
+    // Validate sections
+    if (footerSections !== undefined) {
+      if (!Array.isArray(footerSections)) {
+        errors.push('footerSections must be an array.');
+      } else if (footerSections.length > 2) {
+        errors.push('Maximum 2 footer sections allowed.');
+      } else {
+        footerSections.forEach((section, i) => {
+          if (!section.title || !section.title.trim()) errors.push(`Section #${i + 1}: title is required.`);
+          if (section.links && section.links.length > 7) errors.push(`Section #${i + 1}: maximum 7 links allowed.`);
+          (section.links || []).forEach((link, j) => {
+            if (!link.title || !link.title.trim()) errors.push(`Section #${i + 1}, Link #${j + 1}: title is required.`);
+            if (!link.url || !link.url.trim()) errors.push(`Section #${i + 1}, Link #${j + 1}: URL is required.`);
+          });
+        });
+      }
+    }
+
+    // Validate social media
+    if (socialMedia !== undefined) {
+      if (!Array.isArray(socialMedia)) {
+        errors.push('socialMedia must be an array.');
+      } else {
+        socialMedia.forEach((sm, i) => {
+          if (!VALID_PLATFORMS.has(sm.platform)) errors.push(`Social #${i + 1}: invalid platform "${sm.platform}".`);
+          if (!sm.url || !sm.url.trim()) errors.push(`Social #${i + 1}: URL is required.`);
+        });
+      }
+    }
+
+    // Validate bottom footer links
+    if (bottomFooterLinks !== undefined) {
+      if (!Array.isArray(bottomFooterLinks)) {
+        errors.push('bottomFooterLinks must be an array.');
+      } else {
+        bottomFooterLinks.forEach((link, i) => {
+          if (!link.title || !link.title.trim()) errors.push(`Bottom Link #${i + 1}: title is required.`);
+          if (!link.url || !link.url.trim()) errors.push(`Bottom Link #${i + 1}: URL is required.`);
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      return res.status(400).json({ message: 'Invalid footer configuration.', errors });
+    }
+
+    let config = await ContentConfig.findOne({ type: 'footer' });
+    if (!config) {
+      config = new ContentConfig({ type: 'footer' });
+    }
+
+    if (footerSections !== undefined) config.footerSections = footerSections;
+    if (footerContent !== undefined) config.footerContent = footerContent;
+    if (socialMedia !== undefined) config.socialMedia = socialMedia;
+    if (bottomFooterLinks !== undefined) config.bottomFooterLinks = bottomFooterLinks;
+    if (bottomFooterCopyright !== undefined) config.bottomFooterCopyright = bottomFooterCopyright;
+    config.updatedBy = req.user._id;
+    await config.save();
+
+    res.json({ message: 'Footer configuration updated.', config });
+  } catch (error) {
+    console.error('Update footer config error:', error);
+    res.status(500).json({ message: 'Failed to update footer configuration.' });
+  }
+};
+
+// Public: Get footer for rendering
+exports.getPublicFooter = async (req, res) => {
+  try {
+    const config = await ContentConfig.findOne({ type: 'footer' });
+    res.json({
+      footerSections: config?.footerSections || [],
+      footerContent: config?.footerContent || { title: '', description: '' },
+      socialMedia: config?.socialMedia || [],
+      bottomFooterLinks: config?.bottomFooterLinks || [],
+      bottomFooterCopyright: config?.bottomFooterCopyright || '',
+    });
+  } catch (error) {
+    console.error('Get public footer error:', error);
+    res.status(500).json({ message: 'Failed to retrieve footer data.' });
+  }
+};
